@@ -4,6 +4,7 @@ use tracing::info;
 mod app;
 mod config;
 mod detector;
+mod input;
 mod layer;
 mod renderer;
 mod session;
