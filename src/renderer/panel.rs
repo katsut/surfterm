@@ -81,6 +81,12 @@ pub struct MessagePanel {
     pub auto_scroll: bool,
 }
 
+impl Default for MessagePanel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[allow(dead_code)]
 impl MessagePanel {
     /// Create a new empty message panel with auto-scroll enabled.
@@ -230,6 +236,12 @@ pub struct StatePanel {
     pub state_lines: Vec<String>,
     /// Maximum number of state lines to retain.
     pub max_lines: usize,
+}
+
+impl Default for StatePanel {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[allow(dead_code)]

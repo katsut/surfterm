@@ -281,4 +281,139 @@ mod tests {
             elapsed.as_millis()
         );
     }
+
+    // --- Edge case tests ---
+
+    #[test]
+    fn test_empty_input_sends_nothing() {
+        let (splitter, mut channels) = make_splitter();
+        splitter.classify_chunk(b"");
+
+        assert!(channels.message_rx.try_recv().is_err());
+        assert!(channels.state_rx.try_recv().is_err());
+        assert!(channels.raw_rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn test_single_character_classified_as_raw() {
+        let (splitter, mut channels) = make_splitter();
+        splitter.classify_chunk(b"x");
+        let chunk = channels.raw_rx.try_recv().unwrap();
+        assert_eq!(chunk.classification, Classification::Raw);
+        assert_eq!(chunk.data, b"x");
+    }
+
+    #[test]
+    fn test_binary_data_does_not_panic() {
+        let (splitter, mut channels) = make_splitter();
+        let binary = vec![0x00, 0x01, 0x02, 0x80, 0xff, 0xfe, 0xfd];
+        splitter.classify_chunk(&binary);
+
+        // Should be classified as Raw since no pattern matches binary
+        let chunk = channels.raw_rx.try_recv().unwrap();
+        assert_eq!(chunk.classification, Classification::Raw);
+    }
+
+    #[test]
+    fn test_very_long_line() {
+        let (splitter, mut channels) = make_splitter();
+        let long = "a".repeat(50_000);
+        splitter.classify_chunk(long.as_bytes());
+
+        let chunk = channels.raw_rx.try_recv().unwrap();
+        assert_eq!(chunk.classification, Classification::Raw);
+        assert_eq!(chunk.data.len(), 50_000);
+    }
+
+    #[test]
+    fn test_unicode_content_classified() {
+        let (splitter, mut channels) = make_splitter();
+        splitter.classify_chunk("こんにちは世界".as_bytes());
+        let chunk = channels.raw_rx.try_recv().unwrap();
+        assert_eq!(chunk.classification, Classification::Raw);
+        assert_eq!(
+            String::from_utf8(chunk.data).unwrap(),
+            "こんにちは世界"
+        );
+    }
+
+    #[test]
+    fn test_emoji_content() {
+        let (splitter, mut channels) = make_splitter();
+        splitter.classify_chunk("🚀 deploying...".as_bytes());
+        let chunk = channels.raw_rx.try_recv().unwrap();
+        assert_eq!(chunk.classification, Classification::Raw);
+    }
+
+    #[test]
+    fn test_newline_only() {
+        let (splitter, mut channels) = make_splitter();
+        splitter.classify_chunk(b"\n\n\n");
+        // Empty lines between newlines should not produce chunks
+        // (String::lines skips empty trailing but produces empty lines between)
+        // All empty lines are classified as Raw
+        // Actually, "\n\n\n".lines() yields ["", "", ""] — 3 empty strings
+        // Each empty line still goes through classify_line which returns Raw
+        let chunk = channels.raw_rx.try_recv().unwrap();
+        assert_eq!(chunk.classification, Classification::Raw);
+        assert!(chunk.data.is_empty());
+    }
+
+    #[test]
+    fn test_only_whitespace_classified_as_raw() {
+        let (splitter, mut channels) = make_splitter();
+        splitter.classify_chunk(b"   \t  ");
+        let chunk = channels.raw_rx.try_recv().unwrap();
+        assert_eq!(chunk.classification, Classification::Raw);
+    }
+
+    #[test]
+    fn test_ai_markdown_header_classified_as_message() {
+        let (splitter, mut channels) = make_splitter();
+        splitter.classify_chunk(b"## Architecture Overview");
+        let chunk = channels.message_rx.try_recv().unwrap();
+        assert_eq!(chunk.classification, Classification::Message);
+    }
+
+    #[test]
+    fn test_ai_bullet_list_classified_as_message() {
+        let (splitter, mut channels) = make_splitter();
+        splitter.classify_chunk(b"- First item in list");
+        let chunk = channels.message_rx.try_recv().unwrap();
+        assert_eq!(chunk.classification, Classification::Message);
+    }
+
+    #[test]
+    fn test_ai_numbered_list_classified_as_message() {
+        let (splitter, mut channels) = make_splitter();
+        splitter.classify_chunk(b"1. First step");
+        let chunk = channels.message_rx.try_recv().unwrap();
+        assert_eq!(chunk.classification, Classification::Message);
+    }
+
+    #[test]
+    fn test_large_mixed_content_performance() {
+        let patterns = StreamSplitter::default_claude_code_patterns();
+        let (splitter, _channels) = StreamSplitter::new(patterns);
+
+        let mut data = Vec::new();
+        for i in 0..1000 {
+            match i % 4 {
+                0 => data.extend_from_slice(b"Hello, I'll help with that\n"),
+                1 => data.extend_from_slice("⏺ Read file.rs\n".as_bytes()),
+                2 => data.extend_from_slice(b"Cost: $0.01\n"),
+                _ => data.extend_from_slice(b"\x1b[0mrandom ansi\x1b[0m\n"),
+            }
+        }
+
+        let start = std::time::Instant::now();
+        splitter.classify_chunk(&data);
+        let elapsed = start.elapsed();
+
+        assert!(
+            elapsed.as_millis() < 50,
+            "1000-line mixed classification should be under 50ms, took {}ms",
+            elapsed.as_millis()
+        );
+    }
 }

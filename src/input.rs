@@ -41,6 +41,12 @@ pub struct InputHandler {
     modifiers: ModifiersState,
 }
 
+impl Default for InputHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[allow(dead_code)]
 impl InputHandler {
     /// Create a new `InputHandler` starting in Insert mode (Phase 1 default).
@@ -75,7 +81,7 @@ impl InputHandler {
     /// Core key processing logic, separated from winit's `KeyEvent` for testability.
     ///
     /// Takes a logical key reference and the current modifier state (stored in self).
-    fn process_key(&mut self, logical_key: &Key) -> InputAction {
+    pub fn process_key(&mut self, logical_key: &Key) -> InputAction {
         match self.mode {
             InputMode::Insert => self.handle_insert_key(logical_key),
             InputMode::Normal => self.handle_normal_key(logical_key),
@@ -328,5 +334,154 @@ mod tests {
     fn encode_key_arrow_right() {
         let result = encode_key(&named_key(NamedKey::ArrowRight), ModifiersState::empty());
         assert_eq!(result, Some(b"\x1b[C".to_vec()));
+    }
+
+    // --- F-key tests ---
+
+    #[test]
+    fn f1_through_f12_encoding() {
+        let cases: Vec<(NamedKey, &[u8])> = vec![
+            (NamedKey::F1, b"\x1bOP"),
+            (NamedKey::F2, b"\x1bOQ"),
+            (NamedKey::F3, b"\x1bOR"),
+            (NamedKey::F4, b"\x1bOS"),
+            (NamedKey::F5, b"\x1b[15~"),
+            (NamedKey::F6, b"\x1b[17~"),
+            (NamedKey::F7, b"\x1b[18~"),
+            (NamedKey::F8, b"\x1b[19~"),
+            (NamedKey::F9, b"\x1b[20~"),
+            (NamedKey::F10, b"\x1b[21~"),
+            (NamedKey::F11, b"\x1b[23~"),
+            (NamedKey::F12, b"\x1b[24~"),
+        ];
+
+        let mut handler = InputHandler::new();
+        for (key, expected) in cases {
+            let action = handler.process_key(&named_key(key));
+            assert_eq!(
+                action,
+                InputAction::SendToPty(expected.to_vec()),
+                "F-key {:?} mismatch",
+                key
+            );
+        }
+    }
+
+    // --- Navigation key tests ---
+
+    #[test]
+    fn home_end_keys() {
+        let mut handler = InputHandler::new();
+        assert_eq!(
+            handler.process_key(&named_key(NamedKey::Home)),
+            InputAction::SendToPty(b"\x1b[H".to_vec())
+        );
+        assert_eq!(
+            handler.process_key(&named_key(NamedKey::End)),
+            InputAction::SendToPty(b"\x1b[F".to_vec())
+        );
+    }
+
+    #[test]
+    fn page_up_down_keys() {
+        let mut handler = InputHandler::new();
+        assert_eq!(
+            handler.process_key(&named_key(NamedKey::PageUp)),
+            InputAction::SendToPty(b"\x1b[5~".to_vec())
+        );
+        assert_eq!(
+            handler.process_key(&named_key(NamedKey::PageDown)),
+            InputAction::SendToPty(b"\x1b[6~".to_vec())
+        );
+    }
+
+    #[test]
+    fn insert_delete_keys() {
+        let mut handler = InputHandler::new();
+        assert_eq!(
+            handler.process_key(&named_key(NamedKey::Insert)),
+            InputAction::SendToPty(b"\x1b[2~".to_vec())
+        );
+        assert_eq!(
+            handler.process_key(&named_key(NamedKey::Delete)),
+            InputAction::SendToPty(b"\x1b[3~".to_vec())
+        );
+    }
+
+    // --- Ctrl+A through Ctrl+Z ---
+
+    #[test]
+    fn ctrl_a_through_ctrl_z() {
+        let mut handler = InputHandler::new();
+        handler.set_modifiers(ModifiersState::CONTROL);
+
+        for (i, ch) in ('a'..='z').enumerate() {
+            let action = handler.process_key(&char_key(&ch.to_string()));
+            let expected_byte = (i as u8) + 1;
+            assert_eq!(
+                action,
+                InputAction::SendToPty(vec![expected_byte]),
+                "Ctrl+{} should produce 0x{:02x}",
+                ch,
+                expected_byte
+            );
+        }
+    }
+
+    #[test]
+    fn ctrl_uppercase_produces_same_as_lowercase() {
+        let mut handler = InputHandler::new();
+        handler.set_modifiers(ModifiersState::CONTROL);
+
+        for ch in 'A'..='Z' {
+            let lower = ch.to_ascii_lowercase();
+            let action_upper = handler.process_key(&char_key(&ch.to_string()));
+            let action_lower = handler.process_key(&char_key(&lower.to_string()));
+            assert_eq!(
+                action_upper, action_lower,
+                "Ctrl+{} and Ctrl+{} should produce same output",
+                ch, lower
+            );
+        }
+    }
+
+    // --- Multiple mode switches ---
+
+    #[test]
+    fn multiple_mode_switches_in_sequence() {
+        let mut handler = InputHandler::new();
+        assert_eq!(handler.mode(), InputMode::Insert);
+
+        for _ in 0..10 {
+            handler.process_key(&named_key(NamedKey::Escape));
+            assert_eq!(handler.mode(), InputMode::Normal);
+            handler.process_key(&char_key("i"));
+            assert_eq!(handler.mode(), InputMode::Insert);
+        }
+    }
+
+    #[test]
+    fn keys_in_normal_mode_do_not_send_to_pty() {
+        let mut handler = InputHandler::new();
+        handler.process_key(&named_key(NamedKey::Escape)); // Normal mode
+
+        // Regular characters in normal mode should not send to PTY
+        let action = handler.process_key(&char_key("a"));
+        assert_eq!(action, InputAction::None);
+
+        let action = handler.process_key(&char_key("z"));
+        assert_eq!(action, InputAction::None);
+
+        let action = handler.process_key(&char_key("5"));
+        assert_eq!(action, InputAction::None);
+    }
+
+    #[test]
+    fn encode_key_unknown_named_returns_none() {
+        let result = encode_key(
+            &named_key(NamedKey::PrintScreen),
+            ModifiersState::empty(),
+        );
+        assert_eq!(result, None);
     }
 }

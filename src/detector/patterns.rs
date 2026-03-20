@@ -252,4 +252,148 @@ state = "Idle"
         let patterns = load_patterns_from_toml(toml_content).unwrap();
         assert_eq!(patterns[0].target_state, SessionState::Idle);
     }
+
+    // --- Additional TOML edge case tests ---
+
+    #[test]
+    fn test_empty_toml_string_fails() {
+        let result = load_patterns_from_toml("");
+        assert!(result.is_err(), "Empty TOML string should fail to parse");
+    }
+
+    #[test]
+    fn test_toml_no_patterns_key() {
+        let toml_content = r#"
+[metadata]
+name = "test"
+"#;
+        let result = load_patterns_from_toml(toml_content);
+        assert!(result.is_err(), "TOML without patterns key should fail");
+    }
+
+    #[test]
+    fn test_toml_empty_patterns_array() {
+        let toml_content = "patterns = []\n";
+        let patterns = load_patterns_from_toml(toml_content).unwrap();
+        assert!(patterns.is_empty());
+    }
+
+    #[test]
+    fn test_toml_all_four_state_types() {
+        let toml_content = r#"
+[[patterns]]
+name = "idle_marker"
+regex = "IDLE"
+state = "Idle"
+
+[[patterns]]
+name = "run_marker"
+regex = "RUNNING"
+state = "Running"
+
+[[patterns]]
+name = "wait_marker"
+regex = "WAITING"
+state = "WaitingForInput"
+
+[[patterns]]
+name = "err_marker"
+regex = "ERROR"
+state = "Error"
+"#;
+        let patterns = load_patterns_from_toml(toml_content).unwrap();
+        assert_eq!(patterns.len(), 4);
+        assert_eq!(patterns[0].target_state, SessionState::Idle);
+        assert_eq!(patterns[1].target_state, SessionState::Running);
+        assert_eq!(patterns[2].target_state, SessionState::WaitingForInput);
+        assert_eq!(patterns[3].target_state, SessionState::Error);
+
+        // Verify each pattern actually matches
+        assert!(patterns[0].regex.is_match("IDLE"));
+        assert!(patterns[1].regex.is_match("RUNNING"));
+        assert!(patterns[2].regex.is_match("WAITING"));
+        assert!(patterns[3].regex.is_match("ERROR"));
+    }
+
+    #[test]
+    fn test_toml_missing_fields() {
+        // Missing regex field
+        let toml_content = r#"
+[[patterns]]
+name = "bad"
+state = "Running"
+"#;
+        let result = load_patterns_from_toml(toml_content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_toml_missing_name_field() {
+        let toml_content = r#"
+[[patterns]]
+regex = "test"
+state = "Running"
+"#;
+        let result = load_patterns_from_toml(toml_content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_toml_missing_state_field() {
+        let toml_content = r#"
+[[patterns]]
+name = "test"
+regex = "test"
+"#;
+        let result = load_patterns_from_toml(toml_content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_toml_complex_regex() {
+        let toml_content = r#"
+[[patterns]]
+name = "complex"
+regex = "^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$"
+state = "Running"
+"#;
+        let patterns = load_patterns_from_toml(toml_content).unwrap();
+        assert!(patterns[0].regex.is_match("192.168.1.1"));
+        assert!(!patterns[0].regex.is_match("not an ip"));
+    }
+
+    #[test]
+    fn test_toml_many_patterns() {
+        let mut toml = String::new();
+        for i in 0..50 {
+            toml.push_str(&format!(
+                "[[patterns]]\nname = \"p{i}\"\nregex = \"pattern_{i}\"\nstate = \"Running\"\n\n"
+            ));
+        }
+        let patterns = load_patterns_from_toml(&toml).unwrap();
+        assert_eq!(patterns.len(), 50);
+        assert!(patterns[49].regex.is_match("pattern_49"));
+    }
+
+    #[test]
+    fn test_default_patterns_do_not_match_normal_text() {
+        let patterns = default_claude_code_state_patterns();
+
+        // Normal text should not match any pattern
+        let normal_texts = vec![
+            "hello world",
+            "foo bar baz",
+            "1234567890",
+            "just some code: let x = 5;",
+        ];
+
+        for text in normal_texts {
+            let matched = patterns.iter().any(|p| p.regex.is_match(text));
+            assert!(
+                !matched,
+                "Normal text '{}' should not match any state pattern",
+                text
+            );
+        }
+    }
 }
