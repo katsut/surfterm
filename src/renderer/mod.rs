@@ -1,16 +1,32 @@
+pub mod grid;
+pub mod text;
+
 use std::sync::Arc;
 
 use anyhow::Result;
+use glyphon::TextBounds;
 use tracing::instrument;
 use winit::window::Window;
 
-/// GPU renderer managing wgpu surface, device, and queue.
+use crate::session::terminal::TerminalContent;
+
+use self::grid::GridLayout;
+use self::text::TextRenderer;
+
+/// Default font size in pixels for terminal cell rendering.
+const DEFAULT_FONT_SIZE: f32 = 16.0;
+
+/// GPU renderer managing wgpu surface, device, queue, grid layout, and text
+/// rendering pipeline.
+#[allow(dead_code)]
 pub struct Renderer {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub surface: wgpu::Surface<'static>,
     pub config: wgpu::SurfaceConfiguration,
     pub size: winit::dpi::PhysicalSize<u32>,
+    pub grid: GridLayout,
+    pub text_renderer: TextRenderer,
 }
 
 impl Renderer {
@@ -19,9 +35,9 @@ impl Renderer {
     pub async fn new(window: Arc<Window>) -> Result<Self> {
         let size = window.inner_size();
 
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
-            ..wgpu::InstanceDescriptor::new_without_display_handle()
+            ..Default::default()
         });
 
         let surface = instance
@@ -67,9 +83,14 @@ impl Renderer {
         };
         surface.configure(&device, &config);
 
+        let grid = GridLayout::new(size.width.max(1), size.height.max(1), DEFAULT_FONT_SIZE);
+        let text_renderer = TextRenderer::new(&device, &queue, surface_format);
+
         tracing::info!(
             width = size.width,
             height = size.height,
+            cols = grid.cols,
+            rows = grid.rows,
             format = ?surface_format,
             "wgpu renderer initialized"
         );
@@ -80,6 +101,8 @@ impl Renderer {
             surface,
             config,
             size,
+            grid,
+            text_renderer,
         })
     }
 
@@ -91,39 +114,29 @@ impl Renderer {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
+            self.grid = GridLayout::new(new_size.width, new_size.height, DEFAULT_FONT_SIZE);
             tracing::debug!(
                 width = new_size.width,
                 height = new_size.height,
-                "Surface resized"
+                cols = self.grid.cols,
+                rows = self.grid.rows,
+                "Surface and grid resized"
             );
         }
     }
 
+    /// Acquire the current surface texture.
+    fn acquire_surface_texture(&self) -> Result<wgpu::SurfaceTexture> {
+        self.surface
+            .get_current_texture()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire surface texture: {e}"))
+    }
+
     /// Render a frame: clear the screen with the dark theme background color (#1e1e2e).
+    /// This is a simple clear-only fallback when no terminal content is available.
     #[instrument(skip(self))]
     pub fn render(&mut self) -> Result<()> {
-        let output = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(texture) => texture,
-            wgpu::CurrentSurfaceTexture::Suboptimal(texture) => {
-                tracing::warn!("Surface texture is suboptimal, consider reconfiguring");
-                texture
-            }
-            wgpu::CurrentSurfaceTexture::Timeout => {
-                return Err(anyhow::anyhow!("Timeout acquiring surface texture"));
-            }
-            wgpu::CurrentSurfaceTexture::Outdated => {
-                return Err(anyhow::anyhow!("Surface texture is outdated"));
-            }
-            wgpu::CurrentSurfaceTexture::Lost => {
-                return Err(anyhow::anyhow!("Surface texture is lost"));
-            }
-            wgpu::CurrentSurfaceTexture::Occluded => {
-                return Err(anyhow::anyhow!("Surface is occluded"));
-            }
-            wgpu::CurrentSurfaceTexture::Validation => {
-                return Err(anyhow::anyhow!("Surface texture validation error"));
-            }
-        };
+        let output = self.acquire_surface_texture()?;
 
         let view = output
             .texture
@@ -136,28 +149,122 @@ impl Renderer {
             });
 
         // Dark theme background: #1e1e2e (Catppuccin Mocha base)
-        let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("clear_pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
-                resolve_target: None,
-                depth_slice: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0x1e as f64 / 255.0,
-                        g: 0x1e as f64 / 255.0,
-                        b: 0x2e as f64 / 255.0,
-                        a: 1.0,
-                    }),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        drop(_render_pass);
+        {
+            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("clear_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0x1e as f64 / 255.0,
+                            g: 0x1e as f64 / 255.0,
+                            b: 0x2e as f64 / 255.0,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+
+        Ok(())
+    }
+
+    /// Render terminal content with panel layout:
+    #[allow(dead_code)]
+    /// 1. Clear with dark background
+    /// 2. Draw a vertical divider between left and right panels
+    /// 3. Render terminal cells in the left panel area
+    #[instrument(skip(self, content))]
+    pub fn render_content(&mut self, content: &TerminalContent) -> Result<()> {
+        let output = self.acquire_surface_texture()?;
+
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("surfterm_content_encoder"),
+            });
+
+        // Pass 1: Clear background (#1e1e2e Catppuccin Mocha base)
+        {
+            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("clear_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0x1e as f64 / 255.0,
+                            g: 0x1e as f64 / 255.0,
+                            b: 0x2e as f64 / 255.0,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            // Pass dropped here to end it.
+        }
+
+        // Pass 2: Render text in the left panel area.
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("text_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+
+            let left_rect = self.grid.left_panel_rect();
+            let clip = TextBounds {
+                left: left_rect.x as i32,
+                top: left_rect.y as i32,
+                right: (left_rect.x + left_rect.width) as i32,
+                bottom: (left_rect.y + left_rect.height) as i32,
+            };
+
+            let surface_size = (self.config.width, self.config.height);
+
+            self.text_renderer.render_cells(
+                &self.device,
+                &self.queue,
+                &mut render_pass,
+                &self.grid,
+                &content.rows,
+                surface_size,
+                left_rect.x,
+                left_rect.y,
+                Some(clip),
+            )?;
+        }
 
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
