@@ -4,8 +4,10 @@
 //! into `TerminalCell` rows for rendering. `DisplayMode` controls whether the
 //! split panel view or raw VT output is shown.
 
+use crate::layer::Layer;
 use crate::session::state::SessionState;
 use crate::session::terminal::{Rgb, TerminalCell};
+use crate::session::SessionId;
 
 /// User input foreground color: light green (#a6e3a1, Catppuccin green).
 const USER_INPUT_FG: Rgb = Rgb::new(0xa6, 0xe3, 0xa1);
@@ -41,6 +43,196 @@ const STATE_INFO_FG: Rgb = Rgb::new(0xcd, 0xd6, 0xf4);
 
 /// Dim state lines: (#a6adc8, Catppuccin subtext0).
 const STATE_DIM_FG: Rgb = Rgb::new(0xa6, 0xad, 0xc8);
+
+// ── Session List colors ──
+
+/// Selected entry background (#45475a, Catppuccin surface1).
+const SESSION_SELECTED_BG: Rgb = Rgb::new(0x45, 0x47, 0x5a);
+
+/// A single entry in the session list panel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
+pub struct SessionListEntry {
+    pub id: SessionId,
+    pub project_name: String,
+    pub state: SessionState,
+    pub layer: Layer,
+    /// 1-based display index.
+    pub index: usize,
+}
+
+/// Session list panel displaying all sessions grouped by layer.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct SessionList {
+    pub entries: Vec<SessionListEntry>,
+    pub selected_index: usize,
+    pub visible: bool,
+}
+
+impl Default for SessionList {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[allow(dead_code)]
+impl SessionList {
+    /// Create a new empty session list (hidden by default).
+    pub fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+            selected_index: 0,
+            visible: false,
+        }
+    }
+
+    /// Refresh the list with new entries, clamping the selection index.
+    pub fn update(&mut self, entries: Vec<SessionListEntry>) {
+        self.entries = entries;
+        if self.entries.is_empty() {
+            self.selected_index = 0;
+        } else if self.selected_index >= self.entries.len() {
+            self.selected_index = self.entries.len() - 1;
+        }
+    }
+
+    /// Move selection down (j key). Clamps at the bottom.
+    pub fn select_next(&mut self) {
+        if !self.entries.is_empty() && self.selected_index < self.entries.len() - 1 {
+            self.selected_index += 1;
+        }
+    }
+
+    /// Move selection up (k key). Clamps at the top.
+    pub fn select_prev(&mut self) {
+        self.selected_index = self.selected_index.saturating_sub(1);
+    }
+
+    /// Get the SessionId of the currently selected entry.
+    pub fn selected_id(&self) -> Option<SessionId> {
+        self.entries.get(self.selected_index).map(|e| e.id)
+    }
+
+    /// Select by 1-based display index (keys 1-9). No-op if no matching entry.
+    pub fn select_by_index(&mut self, index: usize) {
+        if let Some(pos) = self.entries.iter().position(|e| e.index == index) {
+            self.selected_index = pos;
+        }
+    }
+
+    /// Toggle visibility of the session list panel.
+    pub fn toggle_visible(&mut self) {
+        self.visible = !self.visible;
+    }
+
+    /// Render the session list as terminal cells.
+    ///
+    /// Layout:
+    /// - Header: "── Sessions ──"
+    /// - Group headers: "Foreground:" / "Background:" / "Pinned:"
+    /// - Each entry: `[index] project_name [state]` (pinned entries have `*` prefix)
+    /// - Selected entry has highlighted background
+    pub fn to_terminal_cells(&self, cols: u16, rows: u16) -> Vec<Vec<TerminalCell>> {
+        if cols == 0 || rows == 0 {
+            return Vec::new();
+        }
+
+        let cols = cols as usize;
+        let rows = rows as usize;
+        let mut result: Vec<Vec<TerminalCell>> = Vec::with_capacity(rows);
+
+        // Header
+        result.push(make_row("── Sessions ──", cols, STATE_HEADER_FG));
+
+        // Collect entries by layer group
+        let pinned: Vec<&SessionListEntry> =
+            self.entries.iter().filter(|e| e.layer == Layer::Pinned).collect();
+        let foreground: Vec<&SessionListEntry> =
+            self.entries.iter().filter(|e| e.layer == Layer::Foreground).collect();
+        let background: Vec<&SessionListEntry> =
+            self.entries.iter().filter(|e| e.layer == Layer::Background).collect();
+
+        // Track flat index for selection highlighting
+        let mut flat_index: usize = 0;
+
+        // Render each group
+        let groups: &[(&str, &[&SessionListEntry])] = &[
+            ("Pinned:", &pinned),
+            ("Foreground:", &foreground),
+            ("Background:", &background),
+        ];
+
+        for &(group_name, group_entries) in groups {
+            if group_entries.is_empty() {
+                continue;
+            }
+            if result.len() >= rows {
+                break;
+            }
+            // Group header
+            result.push(make_row(group_name, cols, STATE_HEADER_FG));
+
+            for entry in group_entries {
+                if result.len() >= rows {
+                    break;
+                }
+
+                let is_selected = flat_index == self.selected_index;
+                flat_index += 1;
+
+                let (state_label, state_fg) = match entry.state {
+                    SessionState::Running => ("Running", STATE_RUNNING_FG),
+                    SessionState::WaitingForInput => ("WaitingForInput", STATE_WAITING_FG),
+                    SessionState::Error => ("Error", STATE_ERROR_FG),
+                    SessionState::Idle => ("Idle", STATE_IDLE_FG),
+                };
+
+                let pin_marker = if entry.layer == Layer::Pinned { "* " } else { "  " };
+                let text = format!(
+                    "{pin_marker}[{}] {} [{}]",
+                    entry.index, entry.project_name, state_label
+                );
+
+                let bg = if is_selected {
+                    SESSION_SELECTED_BG
+                } else {
+                    DEFAULT_BG
+                };
+
+                let mut row = Vec::with_capacity(cols);
+                for ch in text.chars().take(cols) {
+                    row.push(TerminalCell {
+                        c: ch,
+                        fg: state_fg,
+                        bg,
+                        bold: is_selected,
+                        italic: false,
+                        underline: false,
+                    });
+                }
+                while row.len() < cols {
+                    row.push(TerminalCell {
+                        c: ' ',
+                        fg: state_fg,
+                        bg,
+                        bold: false,
+                        italic: false,
+                        underline: false,
+                    });
+                }
+                result.push(row);
+            }
+        }
+
+        // Pad remaining rows
+        while result.len() < rows {
+            result.push(make_row("", cols, STATE_DIM_FG));
+        }
+
+        result
+    }
+}
 
 /// A single message entry in the panel history.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -654,5 +846,220 @@ mod tests {
         // Should have the last 5 lines
         assert_eq!(panel.state_lines[0], "line 5");
         assert_eq!(panel.state_lines[4], "line 9");
+    }
+
+    // ── SessionList tests ──
+
+    fn make_entry(index: usize, name: &str, state: SessionState, layer: Layer) -> SessionListEntry {
+        SessionListEntry {
+            id: SessionId::new(),
+            project_name: name.to_string(),
+            state,
+            layer,
+            index,
+        }
+    }
+
+    fn sample_entries() -> Vec<SessionListEntry> {
+        vec![
+            make_entry(1, "api-server", SessionState::Running, Layer::Pinned),
+            make_entry(2, "web-frontend", SessionState::WaitingForInput, Layer::Foreground),
+            make_entry(3, "cli-tool", SessionState::Idle, Layer::Background),
+        ]
+    }
+
+    #[test]
+    fn session_list_update_entries_and_verify() {
+        let mut list = SessionList::new();
+        assert!(list.entries.is_empty());
+
+        let entries = sample_entries();
+        let id0 = entries[0].id;
+        list.update(entries);
+
+        assert_eq!(list.entries.len(), 3);
+        assert_eq!(list.entries[0].id, id0);
+        assert_eq!(list.entries[0].project_name, "api-server");
+    }
+
+    #[test]
+    fn session_list_select_next_clamps_at_bottom() {
+        let mut list = SessionList::new();
+        list.update(sample_entries());
+
+        assert_eq!(list.selected_index, 0);
+        list.select_next();
+        assert_eq!(list.selected_index, 1);
+        list.select_next();
+        assert_eq!(list.selected_index, 2);
+        // Should clamp, not wrap
+        list.select_next();
+        assert_eq!(list.selected_index, 2);
+    }
+
+    #[test]
+    fn session_list_select_prev_clamps_at_top() {
+        let mut list = SessionList::new();
+        list.update(sample_entries());
+
+        list.selected_index = 1;
+        list.select_prev();
+        assert_eq!(list.selected_index, 0);
+        // Should clamp at 0
+        list.select_prev();
+        assert_eq!(list.selected_index, 0);
+    }
+
+    #[test]
+    fn session_list_selected_id_returns_correct_session() {
+        let mut list = SessionList::new();
+        let entries = sample_entries();
+        let id1 = entries[1].id;
+        list.update(entries);
+
+        list.selected_index = 1;
+        assert_eq!(list.selected_id(), Some(id1));
+    }
+
+    #[test]
+    fn session_list_selected_id_empty_list() {
+        let list = SessionList::new();
+        assert_eq!(list.selected_id(), None);
+    }
+
+    #[test]
+    fn session_list_select_by_index_works() {
+        let mut list = SessionList::new();
+        let entries = sample_entries();
+        let id2 = entries[1].id; // index=2
+        let id3 = entries[2].id; // index=3
+        list.update(entries);
+
+        list.select_by_index(2);
+        assert_eq!(list.selected_id(), Some(id2));
+
+        list.select_by_index(3);
+        assert_eq!(list.selected_id(), Some(id3));
+
+        // Non-existent index: no change
+        list.select_by_index(9);
+        assert_eq!(list.selected_id(), Some(id3));
+    }
+
+    #[test]
+    fn session_list_toggle_visible() {
+        let mut list = SessionList::new();
+        assert!(!list.visible);
+
+        list.toggle_visible();
+        assert!(list.visible);
+
+        list.toggle_visible();
+        assert!(!list.visible);
+    }
+
+    #[test]
+    fn session_list_to_terminal_cells_renders_correct_rows() {
+        let mut list = SessionList::new();
+        list.update(sample_entries());
+
+        let cells = list.to_terminal_cells(50, 20);
+
+        // Row 0: header
+        let header: String = cells[0].iter().map(|c| c.c).collect::<String>();
+        assert!(header.contains("Sessions"), "Header: '{}'", header.trim());
+
+        // Row 1: "Pinned:" group header (pinned entries come first)
+        let row1: String = cells[1].iter().map(|c| c.c).collect::<String>();
+        assert!(row1.contains("Pinned:"), "Expected Pinned group header, got: '{}'", row1.trim());
+
+        // Row 2: pinned entry "[1] api-server [Running]"
+        let row2: String = cells[2].iter().map(|c| c.c).collect::<String>();
+        assert!(row2.contains("api-server"), "Expected api-server, got: '{}'", row2.trim());
+        assert!(row2.contains("Running"), "Expected Running state, got: '{}'", row2.trim());
+        assert!(row2.contains("*"), "Expected pin marker, got: '{}'", row2.trim());
+        // Selected (index 0) should have highlighted bg
+        assert_eq!(cells[2][0].bg, SESSION_SELECTED_BG);
+
+        // Row 3: "Foreground:" group header
+        let row3: String = cells[3].iter().map(|c| c.c).collect::<String>();
+        assert!(row3.contains("Foreground:"), "Expected Foreground header, got: '{}'", row3.trim());
+
+        // Row 4: foreground entry
+        let row4: String = cells[4].iter().map(|c| c.c).collect::<String>();
+        assert!(row4.contains("web-frontend"), "Expected web-frontend, got: '{}'", row4.trim());
+        // Not selected -> default bg
+        assert_eq!(cells[4][0].bg, DEFAULT_BG);
+
+        // Row 5: "Background:" group header
+        let row5: String = cells[5].iter().map(|c| c.c).collect::<String>();
+        assert!(row5.contains("Background:"), "Expected Background header, got: '{}'", row5.trim());
+
+        // Row 6: background entry
+        let row6: String = cells[6].iter().map(|c| c.c).collect::<String>();
+        assert!(row6.contains("cli-tool"), "Expected cli-tool, got: '{}'", row6.trim());
+
+        // Total rows should equal requested
+        assert_eq!(cells.len(), 20);
+    }
+
+    #[test]
+    fn session_list_to_terminal_cells_state_colors() {
+        let mut list = SessionList::new();
+        list.update(sample_entries());
+        // Select second entry so first isn't selected
+        list.selected_index = 1;
+
+        let cells = list.to_terminal_cells(50, 20);
+
+        // Row 2: pinned entry - Running = yellow
+        assert_eq!(cells[2][0].fg, STATE_RUNNING_FG);
+        // Row 4: foreground entry - WaitingForInput = green (selected)
+        assert_eq!(cells[4][0].fg, STATE_WAITING_FG);
+        // Row 6: background entry - Idle = gray
+        assert_eq!(cells[6][0].fg, STATE_IDLE_FG);
+    }
+
+    #[test]
+    fn session_list_to_terminal_cells_zero_dimensions() {
+        let list = SessionList::new();
+        let cells = list.to_terminal_cells(0, 0);
+        assert!(cells.is_empty());
+    }
+
+    #[test]
+    fn session_list_empty_renders_only_header_and_padding() {
+        let list = SessionList::new();
+        let cells = list.to_terminal_cells(30, 5);
+        assert_eq!(cells.len(), 5);
+        let header: String = cells[0].iter().map(|c| c.c).collect::<String>();
+        assert!(header.contains("Sessions"));
+        // Remaining rows are padding (spaces)
+        for row in &cells[1..] {
+            for cell in row {
+                assert_eq!(cell.c, ' ');
+            }
+        }
+    }
+
+    #[test]
+    fn session_list_update_clamps_selected_index() {
+        let mut list = SessionList::new();
+        list.update(sample_entries());
+        list.selected_index = 2;
+
+        // Update with fewer entries
+        list.update(vec![make_entry(1, "only", SessionState::Idle, Layer::Foreground)]);
+        assert_eq!(list.selected_index, 0);
+    }
+
+    #[test]
+    fn session_list_select_next_prev_on_empty() {
+        let mut list = SessionList::new();
+        // Should not panic on empty list
+        list.select_next();
+        assert_eq!(list.selected_index, 0);
+        list.select_prev();
+        assert_eq!(list.selected_index, 0);
     }
 }
