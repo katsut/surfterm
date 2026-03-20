@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos-universal:
+    name: Build macOS Universal Binary
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: macos-universal-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            macos-universal-
+
+      - name: Build aarch64-apple-darwin
+        run: cargo build --release --target aarch64-apple-darwin
+
+      - name: Build x86_64-apple-darwin
+        run: cargo build --release --target x86_64-apple-darwin
+
+      - name: Create universal binary with lipo
+        run: |
+          mkdir -p target/universal-apple-darwin/release
+          lipo -create \
+            target/aarch64-apple-darwin/release/surfterm \
+            target/x86_64-apple-darwin/release/surfterm \
+            -output target/universal-apple-darwin/release/surfterm
+
+      - name: Verify universal binary
+        run: |
+          file target/universal-apple-darwin/release/surfterm
+          lipo -info target/universal-apple-darwin/release/surfterm
+
+      - name: Compress binary
+        run: |
+          cd target/universal-apple-darwin/release
+          tar czf surfterm-${{ github.ref_name }}-macos-universal.tar.gz surfterm
+          shasum -a 256 surfterm-${{ github.ref_name }}-macos-universal.tar.gz > surfterm-${{ github.ref_name }}-macos-universal.tar.gz.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: surfterm-macos-universal
+          path: |
+            target/universal-apple-darwin/release/surfterm-${{ github.ref_name }}-macos-universal.tar.gz
+            target/universal-apple-darwin/release/surfterm-${{ github.ref_name }}-macos-universal.tar.gz.sha256
+
+  release:
+    name: Create GitHub Release
+    needs: build-macos-universal
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: surfterm-macos-universal
+          path: release-assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

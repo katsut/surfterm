@@ -2514,6 +2514,7 @@ dependencies = [
  "regex",
  "seahash",
  "serde",
+ "serde_json",
  "similar",
  "syntect",
  "tempfile",
