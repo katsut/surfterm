@@ -1,4 +1,5 @@
 pub mod grid;
+pub mod panel;
 pub mod text;
 
 use std::sync::Arc;
@@ -11,6 +12,7 @@ use winit::window::Window;
 use crate::session::terminal::TerminalContent;
 
 use self::grid::GridLayout;
+use self::panel::{DisplayMode, MessagePanel};
 use self::text::TextRenderer;
 
 /// Default font size in pixels for terminal cell rendering.
@@ -27,6 +29,8 @@ pub struct Renderer {
     pub size: winit::dpi::PhysicalSize<u32>,
     pub grid: GridLayout,
     pub text_renderer: TextRenderer,
+    pub display_mode: DisplayMode,
+    pub message_panel: MessagePanel,
 }
 
 impl Renderer {
@@ -103,6 +107,8 @@ impl Renderer {
             size,
             grid,
             text_renderer,
+            display_mode: DisplayMode::Panels,
+            message_panel: MessagePanel::new(),
         })
     }
 
@@ -184,6 +190,11 @@ impl Renderer {
     /// 1. Clear with dark background
     /// 2. Draw a vertical divider between left and right panels
     /// 3. Render terminal cells in the left panel area
+    ///
+    /// In `DisplayMode::Raw`, the full `TerminalContent` is rendered across
+    /// the entire window with no panel split. In `DisplayMode::Panels`, the
+    /// message panel occupies the left side and the raw content occupies the
+    /// right side.
     #[instrument(skip(self, content))]
     pub fn render_content(&mut self, content: &TerminalContent) -> Result<()> {
         let output = self.acquire_surface_texture()?;
@@ -221,10 +232,9 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            // Pass dropped here to end it.
         }
 
-        // Pass 2: Render text in the left panel area.
+        // Pass 2: Render text content depending on display mode.
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("text_pass"),
@@ -243,33 +253,97 @@ impl Renderer {
                 multiview_mask: None,
             });
 
-            let left_rect = self.grid.left_panel_rect();
-            let clip = TextBounds {
-                left: left_rect.x as i32,
-                top: left_rect.y as i32,
-                right: (left_rect.x + left_rect.width) as i32,
-                bottom: (left_rect.y + left_rect.height) as i32,
-            };
-
             let surface_size = (self.config.width, self.config.height);
 
-            self.text_renderer.render_cells(
-                &self.device,
-                &self.queue,
-                &mut render_pass,
-                &self.grid,
-                &content.rows,
-                surface_size,
-                left_rect.x,
-                left_rect.y,
-                Some(clip),
-            )?;
+            match self.display_mode {
+                DisplayMode::Raw => {
+                    // Raw mode: render full TerminalContent across entire window.
+                    let clip = TextBounds {
+                        left: 0,
+                        top: 0,
+                        right: self.config.width as i32,
+                        bottom: self.config.height as i32,
+                    };
+
+                    self.text_renderer.render_cells(
+                        &self.device,
+                        &self.queue,
+                        &mut render_pass,
+                        &self.grid,
+                        &content.rows,
+                        surface_size,
+                        0.0,
+                        0.0,
+                        Some(clip),
+                    )?;
+                }
+                DisplayMode::Panels => {
+                    // Panels mode: message panel on left, raw content on right.
+                    let left_rect = self.grid.left_panel_rect();
+                    let left_clip = TextBounds {
+                        left: left_rect.x as i32,
+                        top: left_rect.y as i32,
+                        right: (left_rect.x + left_rect.width) as i32,
+                        bottom: (left_rect.y + left_rect.height) as i32,
+                    };
+
+                    // Render message panel cells in the left area.
+                    let left_cols = self.grid.left_panel_cols();
+                    let message_cells =
+                        self.message_panel.to_terminal_cells(left_cols, self.grid.rows);
+
+                    self.text_renderer.render_cells(
+                        &self.device,
+                        &self.queue,
+                        &mut render_pass,
+                        &self.grid,
+                        &message_cells,
+                        surface_size,
+                        left_rect.x,
+                        left_rect.y,
+                        Some(left_clip),
+                    )?;
+
+                    // Render raw content in the right panel area.
+                    let right_rect = self.grid.right_panel_rect();
+                    let right_clip = TextBounds {
+                        left: right_rect.x as i32,
+                        top: right_rect.y as i32,
+                        right: (right_rect.x + right_rect.width) as i32,
+                        bottom: (right_rect.y + right_rect.height) as i32,
+                    };
+
+                    self.text_renderer.render_cells(
+                        &self.device,
+                        &self.queue,
+                        &mut render_pass,
+                        &self.grid,
+                        &content.rows,
+                        surface_size,
+                        right_rect.x,
+                        right_rect.y,
+                        Some(right_clip),
+                    )?;
+                }
+            }
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
 
         Ok(())
+    }
+
+    /// Toggle between `Panels` and `Raw` display modes.
+    #[allow(dead_code)]
+    pub fn toggle_display_mode(&mut self) {
+        self.display_mode = panel::toggle_display_mode(&self.display_mode);
+    }
+
+    /// Push a message into the message panel.
+    #[allow(dead_code)]
+    pub fn push_message(&mut self, text: String, is_user_input: bool) {
+        self.message_panel.push_message(text, is_user_input);
     }
 }
 
