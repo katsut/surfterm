@@ -9,10 +9,11 @@ use glyphon::TextBounds;
 use tracing::instrument;
 use winit::window::Window;
 
+use crate::session::state::SessionState;
 use crate::session::terminal::TerminalContent;
 
 use self::grid::GridLayout;
-use self::panel::{DisplayMode, MessagePanel};
+use self::panel::{DisplayMode, MessagePanel, StatePanel};
 use self::text::TextRenderer;
 
 /// Default font size in pixels for terminal cell rendering.
@@ -31,6 +32,7 @@ pub struct Renderer {
     pub text_renderer: TextRenderer,
     pub display_mode: DisplayMode,
     pub message_panel: MessagePanel,
+    pub state_panel: StatePanel,
 }
 
 impl Renderer {
@@ -109,6 +111,7 @@ impl Renderer {
             text_renderer,
             display_mode: DisplayMode::Panels,
             message_panel: MessagePanel::new(),
+            state_panel: StatePanel::new(),
         })
     }
 
@@ -304,7 +307,7 @@ impl Renderer {
                         Some(left_clip),
                     )?;
 
-                    // Render raw content in the right panel area.
+                    // Render state panel cells in the right area.
                     let right_rect = self.grid.right_panel_rect();
                     let right_clip = TextBounds {
                         left: right_rect.x as i32,
@@ -313,12 +316,16 @@ impl Renderer {
                         bottom: (right_rect.y + right_rect.height) as i32,
                     };
 
+                    let right_cols = self.grid.right_panel_cols();
+                    let state_cells =
+                        self.state_panel.to_terminal_cells(right_cols, self.grid.rows);
+
                     self.text_renderer.render_cells(
                         &self.device,
                         &self.queue,
                         &mut render_pass,
                         &self.grid,
-                        &content.rows,
+                        &state_cells,
                         surface_size,
                         right_rect.x,
                         right_rect.y,
@@ -344,6 +351,18 @@ impl Renderer {
     #[allow(dead_code)]
     pub fn push_message(&mut self, text: String, is_user_input: bool) {
         self.message_panel.push_message(text, is_user_input);
+    }
+
+    /// Update the session state shown in the state panel.
+    #[allow(dead_code)]
+    pub fn update_session_state(&mut self, state: SessionState) {
+        self.state_panel.update_state(state);
+    }
+
+    /// Push a state channel line into the state panel.
+    #[allow(dead_code)]
+    pub fn push_state_line(&mut self, line: String) {
+        self.state_panel.push_state_line(line);
     }
 }
 

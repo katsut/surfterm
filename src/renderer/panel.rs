@@ -4,6 +4,7 @@
 //! into `TerminalCell` rows for rendering. `DisplayMode` controls whether the
 //! split panel view or raw VT output is shown.
 
+use crate::session::state::SessionState;
 use crate::session::terminal::{Rgb, TerminalCell};
 
 /// User input foreground color: light green (#a6e3a1, Catppuccin green).
@@ -14,6 +15,32 @@ const AI_RESPONSE_FG: Rgb = Rgb::new(0xcd, 0xd6, 0xf4);
 
 /// Default background color (transparent/black — actual bg is rendered by the clear pass).
 const DEFAULT_BG: Rgb = Rgb::new(0x1e, 0x1e, 0x2e);
+
+// ── State Panel colors ──
+
+/// Header / separator dim color (#585b70, Catppuccin surface2).
+const STATE_HEADER_FG: Rgb = Rgb::new(0x58, 0x5b, 0x70);
+
+/// Running indicator: yellow (#f9e2af, Catppuccin yellow).
+const STATE_RUNNING_FG: Rgb = Rgb::new(0xf9, 0xe2, 0xaf);
+
+/// WaitingForInput indicator: green (#a6e3a1, Catppuccin green).
+const STATE_WAITING_FG: Rgb = Rgb::new(0xa6, 0xe3, 0xa1);
+
+/// Error indicator: red (#f38ba8, Catppuccin red).
+const STATE_ERROR_FG: Rgb = Rgb::new(0xf3, 0x8b, 0xa8);
+
+/// Idle indicator: gray (#6c7086, Catppuccin overlay0).
+const STATE_IDLE_FG: Rgb = Rgb::new(0x6c, 0x70, 0x86);
+
+/// Tool name: cyan (#89dceb, Catppuccin sky).
+const STATE_TOOL_FG: Rgb = Rgb::new(0x89, 0xdc, 0xeb);
+
+/// Normal info text: white (#cdd6f4, Catppuccin text).
+const STATE_INFO_FG: Rgb = Rgb::new(0xcd, 0xd6, 0xf4);
+
+/// Dim state lines: (#a6adc8, Catppuccin subtext0).
+const STATE_DIM_FG: Rgb = Rgb::new(0xa6, 0xad, 0xc8);
 
 /// A single message entry in the panel history.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -187,6 +214,201 @@ impl MessagePanel {
     }
 }
 
+/// State panel showing tool execution status, cost, tokens, and session state.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct StatePanel {
+    /// Current session state.
+    pub session_state: SessionState,
+    /// Currently executing tool name (if any).
+    pub current_tool: Option<String>,
+    /// Cost string (e.g. "$0.05").
+    pub cost: Option<String>,
+    /// Token count string.
+    pub token_count: Option<String>,
+    /// Recent state channel output lines.
+    pub state_lines: Vec<String>,
+    /// Maximum number of state lines to retain.
+    pub max_lines: usize,
+}
+
+#[allow(dead_code)]
+impl StatePanel {
+    /// Create a new empty state panel.
+    pub fn new() -> Self {
+        Self {
+            session_state: SessionState::Idle,
+            current_tool: None,
+            cost: None,
+            token_count: None,
+            state_lines: Vec::new(),
+            max_lines: 100,
+        }
+    }
+
+    /// Update the session state.
+    pub fn update_state(&mut self, state: SessionState) {
+        self.session_state = state;
+    }
+
+    /// Push a state channel line, extracting tool/cost/token info.
+    pub fn push_state_line(&mut self, line: String) {
+        if let Some(tool) = extract_tool_name(&line) {
+            self.current_tool = Some(tool);
+        }
+        if let Some(cost) = extract_cost(&line) {
+            self.cost = Some(cost);
+        }
+        if let Some(tokens) = extract_tokens(&line) {
+            self.token_count = Some(tokens);
+        }
+        self.state_lines.push(line);
+        if self.state_lines.len() > self.max_lines {
+            let excess = self.state_lines.len() - self.max_lines;
+            self.state_lines.drain(..excess);
+        }
+    }
+
+    /// Render state panel content as terminal cells.
+    pub fn to_terminal_cells(&self, cols: u16, rows: u16) -> Vec<Vec<TerminalCell>> {
+        if cols == 0 || rows == 0 {
+            return Vec::new();
+        }
+
+        let cols = cols as usize;
+        let rows = rows as usize;
+        let mut result: Vec<Vec<TerminalCell>> = Vec::with_capacity(rows);
+
+        // Row 0: header
+        result.push(make_row("── State ──", cols, STATE_HEADER_FG));
+
+        // Row 1: state indicator
+        if result.len() < rows {
+            let (label, fg) = match self.session_state {
+                SessionState::Running => ("● Running", STATE_RUNNING_FG),
+                SessionState::WaitingForInput => ("● WaitingForInput", STATE_WAITING_FG),
+                SessionState::Error => ("● Error", STATE_ERROR_FG),
+                SessionState::Idle => ("● Idle", STATE_IDLE_FG),
+            };
+            result.push(make_row(label, cols, fg));
+        }
+
+        // Row 2: current tool
+        if result.len() < rows {
+            let text = match &self.current_tool {
+                Some(tool) => format!("Tool: {tool}"),
+                None => "Tool: -".to_string(),
+            };
+            result.push(make_row(&text, cols, STATE_TOOL_FG));
+        }
+
+        // Row 3: cost
+        if result.len() < rows {
+            let text = match &self.cost {
+                Some(c) => format!("Cost: {c}"),
+                None => "Cost: -".to_string(),
+            };
+            result.push(make_row(&text, cols, STATE_INFO_FG));
+        }
+
+        // Row 4: tokens
+        if result.len() < rows {
+            let text = match &self.token_count {
+                Some(t) => format!("Tokens: {t}"),
+                None => "Tokens: -".to_string(),
+            };
+            result.push(make_row(&text, cols, STATE_INFO_FG));
+        }
+
+        // Row 5: separator
+        if result.len() < rows {
+            let sep: String = "─".repeat(cols.min(40));
+            result.push(make_row(&sep, cols, STATE_HEADER_FG));
+        }
+
+        // Row 6+: recent state lines
+        for line in &self.state_lines {
+            if result.len() >= rows {
+                break;
+            }
+            let wrapped = wrap_text(line, cols);
+            for w in wrapped {
+                if result.len() >= rows {
+                    break;
+                }
+                result.push(make_row(&w, cols, STATE_DIM_FG));
+            }
+        }
+
+        // Pad remaining rows
+        while result.len() < rows {
+            result.push(make_row("", cols, STATE_DIM_FG));
+        }
+
+        result
+    }
+}
+
+/// Build a single row of TerminalCells from a string.
+fn make_row(text: &str, cols: usize, fg: Rgb) -> Vec<TerminalCell> {
+    let mut row = Vec::with_capacity(cols);
+    for ch in text.chars().take(cols) {
+        row.push(TerminalCell {
+            c: ch,
+            fg,
+            bg: DEFAULT_BG,
+            bold: false,
+            italic: false,
+            underline: false,
+        });
+    }
+    while row.len() < cols {
+        row.push(TerminalCell {
+            c: ' ',
+            fg,
+            bg: DEFAULT_BG,
+            bold: false,
+            italic: false,
+            underline: false,
+        });
+    }
+    row
+}
+
+/// Extract tool name from lines like "⏺ Read src/main.rs" or "Read src/main.rs".
+fn extract_tool_name(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_start_matches('⏺').trim();
+    let tools = ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "Skill", "TodoWrite", "Agent"];
+    for tool in &tools {
+        if trimmed.starts_with(tool) {
+            return Some((*tool).to_string());
+        }
+    }
+    None
+}
+
+/// Extract cost from lines like "Cost: $0.05".
+fn extract_cost(line: &str) -> Option<String> {
+    let lower = line.to_lowercase();
+    if let Some(idx) = lower.find("cost:") {
+        let rest = line[idx + 5..].trim();
+        if !rest.is_empty() {
+            return Some(rest.to_string());
+        }
+    }
+    None
+}
+
+/// Extract token info from lines containing "token".
+fn extract_tokens(line: &str) -> Option<String> {
+    let lower = line.to_lowercase();
+    if lower.contains("token") {
+        Some(line.trim().to_string())
+    } else {
+        None
+    }
+}
+
 /// Wrap a string into lines of at most `cols` characters.
 fn wrap_text(text: &str, cols: usize) -> Vec<String> {
     if cols == 0 {
@@ -342,5 +564,83 @@ mod tests {
     fn wrap_text_empty() {
         let lines = wrap_text("", 10);
         assert_eq!(lines, vec![""]);
+    }
+
+    // ── StatePanel tests ──
+
+    #[test]
+    fn state_indicator_shows_correct_text_for_each_state() {
+        let mut panel = StatePanel::new();
+        let cols = 30;
+        let rows = 10;
+
+        // Idle (default)
+        let cells = panel.to_terminal_cells(cols, rows);
+        let row1_text: String = cells[1].iter().map(|c| c.c).collect::<String>();
+        assert!(row1_text.contains("Idle"), "Expected Idle, got: '{}'", row1_text.trim());
+        assert_eq!(cells[1][0].fg, STATE_IDLE_FG);
+
+        // Running
+        panel.update_state(SessionState::Running);
+        let cells = panel.to_terminal_cells(cols, rows);
+        let row1_text: String = cells[1].iter().map(|c| c.c).collect::<String>();
+        assert!(row1_text.contains("Running"), "Expected Running, got: '{}'", row1_text.trim());
+        assert_eq!(cells[1][0].fg, STATE_RUNNING_FG);
+
+        // WaitingForInput
+        panel.update_state(SessionState::WaitingForInput);
+        let cells = panel.to_terminal_cells(cols, rows);
+        let row1_text: String = cells[1].iter().map(|c| c.c).collect::<String>();
+        assert!(row1_text.contains("WaitingForInput"), "Expected WaitingForInput, got: '{}'", row1_text.trim());
+        assert_eq!(cells[1][0].fg, STATE_WAITING_FG);
+
+        // Error
+        panel.update_state(SessionState::Error);
+        let cells = panel.to_terminal_cells(cols, rows);
+        let row1_text: String = cells[1].iter().map(|c| c.c).collect::<String>();
+        assert!(row1_text.contains("Error"), "Expected Error, got: '{}'", row1_text.trim());
+        assert_eq!(cells[1][0].fg, STATE_ERROR_FG);
+    }
+
+    #[test]
+    fn push_state_line_extracts_tool_name() {
+        let mut panel = StatePanel::new();
+        assert!(panel.current_tool.is_none());
+
+        panel.push_state_line("⏺ Read src/main.rs".to_string());
+        assert_eq!(panel.current_tool.as_deref(), Some("Read"));
+
+        panel.push_state_line("⏺ Bash ls -la".to_string());
+        assert_eq!(panel.current_tool.as_deref(), Some("Bash"));
+
+        panel.push_state_line("Edit src/lib.rs".to_string());
+        assert_eq!(panel.current_tool.as_deref(), Some("Edit"));
+    }
+
+    #[test]
+    fn push_state_line_extracts_cost() {
+        let mut panel = StatePanel::new();
+        assert!(panel.cost.is_none());
+
+        panel.push_state_line("Cost: $0.05".to_string());
+        assert_eq!(panel.cost.as_deref(), Some("$0.05"));
+
+        panel.push_state_line("cost: $1.23 total".to_string());
+        assert_eq!(panel.cost.as_deref(), Some("$1.23 total"));
+    }
+
+    #[test]
+    fn state_lines_accumulate_and_respect_max_lines() {
+        let mut panel = StatePanel::new();
+        panel.max_lines = 5;
+
+        for i in 0..10 {
+            panel.push_state_line(format!("line {i}"));
+        }
+
+        assert_eq!(panel.state_lines.len(), 5);
+        // Should have the last 5 lines
+        assert_eq!(panel.state_lines[0], "line 5");
+        assert_eq!(panel.state_lines[4], "line 9");
     }
 }
