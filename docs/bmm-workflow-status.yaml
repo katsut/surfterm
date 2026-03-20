@@ -1,0 +1,70 @@
+# BMAD Method Workflow Status
+# Generated: 2026-03-20T00:00:00Z
+# Project: Surfterm
+
+project_name: "Surfterm"
+project_type: "other"
+project_level: 3
+communication_language: "English"
+output_language: "English"
+last_updated: "2026-03-20"
+
+# Workflow Status Tracking
+# Status values:
+#   - "required" - Must be completed
+#   - "optional" - Can be skipped
+#   - "recommended" - Strongly suggested
+#   - "conditional" - Required based on project level
+#   - "{file-path}" - Completed (path to output file)
+#   - "skipped" - Explicitly skipped
+
+workflow_status:
+  # Phase 1: Analysis (Optional but recommended)
+  - name: product-brief
+    phase: 1
+    status: "docs/product-brief-surfterm-2026-03-20.md"
+    description: "Create comprehensive product brief"
+
+  - name: brainstorm-project
+    phase: 1
+    status: "optional"
+    description: "Structured brainstorming session"
+
+  - name: research
+    phase: 1
+    status: "optional"
+    description: "Market and competitive research"
+
+  # Phase 2: Planning (Required - choose one based on project level)
+  - name: prd
+    phase: 2
+    status: "docs/prd-surfterm-2026-03-20.md"
+    description: "Product Requirements Document"
+
+  - name: tech-spec
+    phase: 2
+    status: "optional"
+    description: "Technical Specification"
+
+  - name: create-ux-design
+    phase: 2
+    status: "optional"
+    description: "UX/UI design workflow"
+
+  # Phase 3: Solutioning (Conditional on project level)
+  - name: architecture
+    phase: 3
+    status: "docs/architecture-surfterm-2026-03-20.md"
+    description: "System architecture design"
+
+  - name: solutioning-gate-check
+    phase: 3
+    status: "optional"
+    description: "Validate architecture against requirements"
+
+  - name: sprint-planning
+    phase: 4
+    status: "docs/sprint-plan-surfterm-2026-03-20.md"
+    description: "Sprint planning and story breakdown"
+
+  # Implementation tracked in docs/sprint-status.yaml

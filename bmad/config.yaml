@@ -1,0 +1,17 @@
+project_name: "Surfterm"
+project_type: "other"  # desktop terminal emulator
+project_level: 3  # 12-40 stories
+
+# Output folder (relative to project root)
+output_folder: "docs"
+
+# Module-specific settings
+bmm:
+  workflow_status_file: "docs/bmm-workflow-status.yaml"
+  sprint_status_file: "docs/sprint-status.yaml"
+
+# Path configuration
+paths:
+  docs: "docs"
+  stories: "docs/stories"
+  tests: "tests"

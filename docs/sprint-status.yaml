@@ -1,0 +1,147 @@
+version: "6.0.0"
+project_name: "Surfterm"
+project_level: 3
+current_sprint: 1
+sprint_plan_path: "docs/sprint-plan-surfterm-2026-03-20.md"
+
+sprints:
+  - sprint_number: 1
+    capacity_points: 5
+    committed_points: 4
+    completed_points: 0
+    status: "not_started"
+    goal: "Cargo プロジェクト初期化と CI 構築"
+    stories:
+      - story_id: "STORY-001"
+        title: "プロジェクト初期化と依存クレート設定"
+        points: 2
+        status: "not_started"
+      - story_id: "STORY-035"
+        title: "CI/CD パイプライン"
+        points: 2
+        status: "not_started"
+
+  - sprint_number: 2
+    capacity_points: 5
+    committed_points: 3
+    completed_points: 0
+    status: "not_started"
+    goal: "PTY でシェルをスポーンし出力を読み出せる"
+    stories:
+      - story_id: "STORY-002"
+        title: "PTY 起動とシェルスポーン"
+        points: 3
+        status: "not_started"
+
+  - sprint_number: 3
+    capacity_points: 5
+    committed_points: 5
+    completed_points: 0
+    status: "not_started"
+    goal: "alacritty_terminal でセルバッファを構築"
+    stories:
+      - story_id: "STORY-004"
+        title: "alacritty_terminal 統合と VT パース"
+        points: 5
+        status: "not_started"
+
+  - sprint_number: 4
+    capacity_points: 5
+    committed_points: 5
+    completed_points: 0
+    status: "not_started"
+    goal: "wgpu ウィンドウ表示と winit+tokio 統合"
+    stories:
+      - story_id: "STORY-005"
+        title: "winit ウィンドウと wgpu 初期化"
+        points: 5
+        status: "not_started"
+
+  - sprint_number: 5
+    capacity_points: 5
+    committed_points: 5
+    completed_points: 0
+    status: "not_started"
+    goal: "セルバッファの内容を画面に描画"
+    stories:
+      - story_id: "STORY-006"
+        title: "glyphon テキスト描画"
+        points: 5
+        status: "not_started"
+
+  - sprint_number: 6
+    capacity_points: 5
+    committed_points: 6
+    completed_points: 0
+    status: "not_started"
+    goal: "キー入力とパネルレイアウト"
+    stories:
+      - story_id: "STORY-003"
+        title: "キーボード入力の PTY 転送"
+        points: 3
+        status: "not_started"
+      - story_id: "STORY-007"
+        title: "グリッドレイアウトとパネル分割"
+        points: 3
+        status: "not_started"
+
+  - sprint_number: 7
+    capacity_points: 5
+    committed_points: 5
+    completed_points: 0
+    status: "not_started"
+    goal: "PTY 出力の3チャネル分離"
+    stories:
+      - story_id: "STORY-010"
+        title: "StreamSplitter"
+        points: 5
+        status: "not_started"
+
+  - sprint_number: 8
+    capacity_points: 5
+    committed_points: 5
+    completed_points: 0
+    status: "not_started"
+    goal: "Claude Code の状態自動検知"
+    stories:
+      - story_id: "STORY-011"
+        title: "StateDetector"
+        points: 5
+        status: "not_started"
+
+  - sprint_number: 9
+    capacity_points: 5
+    committed_points: 5
+    completed_points: 0
+    status: "not_started"
+    goal: "Message Panel に会話内容を表示"
+    stories:
+      - story_id: "STORY-008"
+        title: "Message Panel 描画"
+        points: 5
+        status: "not_started"
+
+  - sprint_number: 10
+    capacity_points: 5
+    committed_points: 5
+    completed_points: 0
+    status: "not_started"
+    goal: "MVP 完成 — State Panel + Raw トグル"
+    stories:
+      - story_id: "STORY-009"
+        title: "State Panel 描画"
+        points: 3
+        status: "not_started"
+      - story_id: "STORY-012"
+        title: "Raw VT 表示トグル"
+        points: 2
+        status: "not_started"
+
+velocity:
+  rolling_average: null
+
+team:
+  size: 1
+  sprint_length_weeks: 1
+  hours_per_day: 2.5
+  capacity_per_sprint: 5

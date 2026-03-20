@@ -1,0 +1,48 @@
+[package]
+name = "surfterm"
+version = "0.1.0"
+edition = "2021"
+description = "AI-aware terminal emulator for managing multiple coding sessions"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/tsuruta/surfterm"
+
+[dependencies]
+# PTY & VT emulation
+portable-pty = "0.8"
+alacritty_terminal = "0.25"
+
+# Rendering
+wgpu = "29"
+glyphon = "0.10"
+winit = "0.30"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Configuration
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+
+# Pattern matching
+regex = "1"
+
+# Hashing (auto accent color)
+seahash = "4"
+
+# Unique IDs
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "stream_splitter"
+harness = false
