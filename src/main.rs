@@ -7,6 +7,7 @@ mod config;
 mod detector;
 mod input;
 mod layer;
+mod llm;
 mod preview;
 mod renderer;
 mod session;
