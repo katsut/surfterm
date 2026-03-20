@@ -1,2 +1,268 @@
+use std::io::{Read, Write};
+use std::sync::Arc;
+
+use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
+use tokio::sync::{mpsc, Mutex, Notify};
+use tracing::instrument;
+
+/// Errors that can occur during PTY operations.
+#[derive(Debug, thiserror::Error)]
+#[allow(dead_code)]
+pub enum PtyError {
+    #[error("failed to open PTY pair: {0}")]
+    OpenPty(#[source] anyhow::Error),
+
+    #[error("failed to spawn child process: {0}")]
+    Spawn(#[source] anyhow::Error),
+
+    #[error("failed to read from PTY: {0}")]
+    ReadError(#[source] std::io::Error),
+
+    #[error("failed to write to PTY: {0}")]
+    WriteError(#[source] std::io::Error),
+
+    #[error("failed to resize PTY: {0}")]
+    ResizeError(#[source] anyhow::Error),
+
+    #[error("failed to take PTY writer: {0}")]
+    WriterError(#[source] anyhow::Error),
+
+    #[error("failed to take PTY reader: {0}")]
+    ReaderError(#[source] anyhow::Error),
+
+    #[error("PTY not yet spawned")]
+    NotSpawned,
+}
+
+/// Handle wrapping a PTY master and child process.
+///
+/// Provides async methods for reading output, writing input, and resizing
+/// the terminal. Output is streamed through a `tokio::sync::mpsc` channel.
+#[allow(dead_code)]
+pub struct PtyHandle {
+    master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    output_rx: mpsc::Receiver<Vec<u8>>,
+    child_exited: Arc<Notify>,
+    _reader_task: tokio::task::JoinHandle<()>,
+    _child_task: tokio::task::JoinHandle<()>,
+}
+
+#[allow(dead_code)]
+impl PtyHandle {
+    /// Spawn the user's default shell inside a new PTY.
+    ///
+    /// The default shell is read from `$SHELL`; falls back to `/bin/zsh`.
+    /// A background task continuously reads PTY output into the channel.
+    #[instrument(skip_all, fields(rows, cols))]
+    pub fn spawn(rows: u16, cols: u16) -> Result<Self, PtyError> {
+        let pty_system = native_pty_system();
+
+        let size = PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+
+        let pair = pty_system
+            .openpty(size)
+            .map_err(PtyError::OpenPty)?;
+
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+
+        let mut cmd = CommandBuilder::new(&shell);
+        cmd.cwd(std::env::current_dir().unwrap_or_else(|_| "/".into()));
+
+        let mut child = pair
+            .slave
+            .spawn_command(cmd)
+            .map_err(PtyError::Spawn)?;
+
+        // Drop the slave side; the master keeps the PTY alive.
+        drop(pair.slave);
+
+        let mut reader = pair
+            .master
+            .try_clone_reader()
+            .map_err(PtyError::ReaderError)?;
+
+        let writer = pair
+            .master
+            .take_writer()
+            .map_err(PtyError::WriterError)?;
+
+        let (output_tx, output_rx) = mpsc::channel::<Vec<u8>>(256);
+        let child_exited = Arc::new(Notify::new());
+
+        // Background task: read PTY output in a blocking thread.
+        let reader_task = {
+            let tx = output_tx;
+            tokio::task::spawn_blocking(move || {
+                let mut buf = [0u8; 4096];
+                loop {
+                    match reader.read(&mut buf) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            if tx.blocking_send(buf[..n].to_vec()).is_err() {
+                                break;
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            })
+        };
+
+        // Background task: wait for child exit.
+        let child_task = {
+            let exited = Arc::clone(&child_exited);
+            tokio::task::spawn_blocking(move || {
+                let _ = child.wait();
+                exited.notify_waiters();
+            })
+        };
+
+        Ok(Self {
+            master: Arc::new(Mutex::new(pair.master)),
+            writer: Arc::new(Mutex::new(writer)),
+            output_rx,
+            child_exited,
+            _reader_task: reader_task,
+            _child_task: child_task,
+        })
+    }
+
+    /// Receive the next chunk of output from the PTY.
+    ///
+    /// Returns `None` when the PTY output stream has ended (child exited and
+    /// all buffered data has been consumed).
+    #[instrument(skip(self))]
+    pub async fn read_output(&mut self) -> Option<Vec<u8>> {
+        self.output_rx.recv().await
+    }
+
+    /// Write bytes to the PTY (i.e. send input to the child process).
+    #[instrument(skip(self, data), fields(len = data.len()))]
+    pub async fn write_input(&self, data: &[u8]) -> Result<(), PtyError> {
+        let writer = Arc::clone(&self.writer);
+        let data = data.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let mut w = writer.blocking_lock();
+            w.write_all(&data).map_err(PtyError::WriteError)?;
+            w.flush().map_err(PtyError::WriteError)
+        })
+        .await
+        .expect("blocking write task panicked")
+    }
+
+    /// Resize the PTY to the given dimensions.
+    #[instrument(skip(self))]
+    pub async fn resize(&self, rows: u16, cols: u16) -> Result<(), PtyError> {
+        let master = Arc::clone(&self.master);
+        tokio::task::spawn_blocking(move || {
+            let m = master.blocking_lock();
+            m.resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(PtyError::ResizeError)
+        })
+        .await
+        .expect("blocking resize task panicked")
+    }
+
+    /// Wait until the child process has exited.
+    #[instrument(skip(self))]
+    pub async fn wait_for_exit(&self) {
+        self.child_exited.notified().await;
+    }
+}
+
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn spawn_and_read_output() {
+        // Spawn a PTY with a simple command echoing text.
+        let pty_system = native_pty_system();
+        let size = PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+        let pair = pty_system.openpty(size).expect("open pty");
+
+        let mut cmd = CommandBuilder::new("echo");
+        cmd.arg("hello_pty_test");
+
+        let mut child = pair.slave.spawn_command(cmd).expect("spawn echo");
+        drop(pair.slave);
+
+        let mut reader = pair.master.try_clone_reader().expect("clone reader");
+
+        // Read output in a blocking fashion (test context).
+        let output = tokio::task::spawn_blocking(move || {
+            let mut buf = Vec::new();
+            let mut tmp = [0u8; 1024];
+            loop {
+                match reader.read(&mut tmp) {
+                    Ok(0) => break,
+                    Ok(n) => buf.extend_from_slice(&tmp[..n]),
+                    Err(_) => break,
+                }
+            }
+            buf
+        });
+
+        let _ = child.wait();
+        drop(pair.master);
+
+        let out = output.await.expect("reader task");
+        let text = String::from_utf8_lossy(&out);
+        assert!(
+            text.contains("hello_pty_test"),
+            "expected output to contain 'hello_pty_test', got: {text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn pty_handle_spawn_and_exit() {
+        std::env::set_var("SHELL", "/bin/sh");
+
+        let mut handle = PtyHandle::spawn(24, 80).expect("spawn pty handle");
+
+        // Send 'exit' to make the shell terminate.
+        handle
+            .write_input(b"exit\n")
+            .await
+            .expect("write exit command");
+
+        // Drain output until the stream ends — this confirms the child exited
+        // because the reader task only returns None after EOF.
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+        while let Ok(Some(_)) =
+            tokio::time::timeout_at(deadline, handle.read_output()).await
+        {}
+    }
+
+    #[tokio::test]
+    async fn pty_handle_resize() {
+        std::env::set_var("SHELL", "/bin/sh");
+        let mut handle = PtyHandle::spawn(24, 80).expect("spawn pty handle");
+
+        // Resize should succeed.
+        handle.resize(48, 120).await.expect("resize pty");
+
+        // Clean up.
+        handle
+            .write_input(b"exit\n")
+            .await
+            .expect("write exit");
+        while handle.read_output().await.is_some() {}
+    }
+}

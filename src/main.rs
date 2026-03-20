@@ -1,6 +1,7 @@
 use anyhow::Result;
 use tracing::info;
 
+mod app;
 mod config;
 mod detector;
 mod layer;
@@ -17,8 +18,7 @@ fn main() -> Result<()> {
 
     info!("Surfterm v{} starting", env!("CARGO_PKG_VERSION"));
 
-    // Phase 1: winit event loop will be initialized here
-    info!("Surfterm initialized successfully");
+    app::run()?;
 
     Ok(())
 }
