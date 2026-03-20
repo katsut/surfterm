@@ -6,8 +6,10 @@ mod config;
 mod detector;
 mod input;
 mod layer;
+mod preview;
 mod renderer;
 mod session;
+mod shell;
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()

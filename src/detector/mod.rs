@@ -1,4 +1,5 @@
 pub mod patterns;
+pub mod tool_registry;
 
 use tokio::sync::watch;
 use tracing::instrument;
