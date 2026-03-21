@@ -163,7 +163,134 @@ impl TextRenderer {
         Ok(())
     }
 
-    /// Execute the glyphon render pass (must be called after `render_cells_prepare`).
+    /// Build glyphon Buffers from terminal cells.
+    fn build_buffers(
+        &mut self,
+        grid: &GridLayout,
+        cells: &[Vec<TerminalCell>],
+        surface_width: f32,
+    ) -> Vec<Buffer> {
+        let metrics = Metrics::new(self.font_size, grid.cell_height);
+        let mut buffers = Vec::with_capacity(cells.len());
+
+        for row_cells in cells {
+            let mut buffer = Buffer::new(&mut self.font_system, metrics);
+            buffer.set_size(
+                &mut self.font_system,
+                Some(surface_width),
+                Some(grid.cell_height),
+            );
+
+            let text: String = row_cells.iter().map(|c| c.c).collect();
+            let mut spans: Vec<(&str, Attrs)> = Vec::new();
+            let mut byte_offset = 0;
+
+            for cell in row_cells {
+                let ch_str_start = byte_offset;
+                byte_offset += cell.c.len_utf8();
+                let ch_str = &text[ch_str_start..byte_offset];
+
+                let weight = if cell.bold {
+                    Weight::BOLD
+                } else {
+                    Weight::NORMAL
+                };
+
+                let attrs = Attrs::new()
+                    .family(Family::Monospace)
+                    .weight(weight)
+                    .color(Color::rgb(cell.fg.r, cell.fg.g, cell.fg.b));
+
+                spans.push((ch_str, attrs));
+            }
+
+            buffer.set_rich_text(
+                &mut self.font_system,
+                spans,
+                &Attrs::new().family(Family::Monospace),
+                Shaping::Basic,
+                None,
+            );
+            buffer.shape_until_scroll(&mut self.font_system, false);
+            buffers.push(buffer);
+        }
+
+        buffers
+    }
+
+    /// Prepare two regions (sidebar + main) in a single glyphon prepare call.
+    #[allow(clippy::too_many_arguments)]
+    #[instrument(skip_all)]
+    pub fn render_two_regions_prepare(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        grid: &GridLayout,
+        sidebar_cells: &[Vec<TerminalCell>],
+        sidebar_x: f32,
+        sidebar_y: f32,
+        sidebar_bounds: TextBounds,
+        main_cells: &[Vec<TerminalCell>],
+        main_x: f32,
+        main_y: f32,
+        main_bounds: TextBounds,
+        surface_size: (u32, u32),
+    ) -> Result<()> {
+        let sidebar_buffers = self.build_buffers(grid, sidebar_cells, grid.sidebar_width);
+        let main_buffers = self.build_buffers(grid, main_cells, surface_size.0 as f32);
+
+        self.viewport.update(
+            queue,
+            Resolution {
+                width: surface_size.0,
+                height: surface_size.1,
+            },
+        );
+
+        let mut text_areas: Vec<TextArea<'_>> = Vec::new();
+
+        // Sidebar text areas
+        for (row_idx, buffer) in sidebar_buffers.iter().enumerate() {
+            text_areas.push(TextArea {
+                buffer,
+                left: sidebar_x,
+                top: sidebar_y + row_idx as f32 * grid.cell_height,
+                scale: 1.0,
+                bounds: sidebar_bounds,
+                default_color: Color::rgb(205, 214, 244),
+                custom_glyphs: &[],
+            });
+        }
+
+        // Main text areas
+        for (row_idx, buffer) in main_buffers.iter().enumerate() {
+            text_areas.push(TextArea {
+                buffer,
+                left: main_x,
+                top: main_y + row_idx as f32 * grid.cell_height,
+                scale: 1.0,
+                bounds: main_bounds,
+                default_color: Color::rgb(205, 214, 244),
+                custom_glyphs: &[],
+            });
+        }
+
+        self.renderer.prepare(
+            device,
+            queue,
+            &mut self.font_system,
+            &mut self.atlas,
+            &self.viewport,
+            text_areas,
+            &mut self.swash_cache,
+        )?;
+
+        self.atlas.trim();
+
+        Ok(())
+    }
+
+    /// Execute the glyphon render pass (must be called after prepare).
     #[instrument(skip_all)]
     pub fn render_pass(&mut self, pass: &mut wgpu::RenderPass<'_>) -> Result<()> {
         self.renderer

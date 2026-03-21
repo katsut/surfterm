@@ -235,67 +235,34 @@ impl Renderer {
             self.side_panel
                 .to_terminal_cells(sidebar_cols, sidebar_rows, self.scale_factor);
 
-        // Combine sidebar and main terminal cells into one prepare call.
-        // We build a merged cell grid: sidebar cells on the left, terminal cells on the right.
-        let main_cols = self.grid.main_cols() as usize;
-        let total_visual_cols = sidebar_cols as usize + main_cols;
-        let total_rows = self.grid.rows as usize;
-
-        let mut merged_rows: Vec<Vec<crate::session::terminal::TerminalCell>> =
-            Vec::with_capacity(total_rows);
-
-        for row_idx in 0..total_rows {
-            let mut row = Vec::with_capacity(total_visual_cols);
-
-            // Sidebar portion
-            if row_idx < sidebar_cells.len() {
-                row.extend_from_slice(&sidebar_cells[row_idx]);
-            } else {
-                // Pad with empty cells
-                for _ in 0..sidebar_cols as usize {
-                    row.push(crate::session::terminal::TerminalCell::default());
-                }
-            }
-
-            // Terminal (main area) portion
-            if row_idx < content.rows.len() {
-                let term_row = &content.rows[row_idx];
-                for col_idx in 0..main_cols {
-                    if col_idx < term_row.len() {
-                        row.push(term_row[col_idx].clone());
-                    } else {
-                        row.push(crate::session::terminal::TerminalCell::default());
-                    }
-                }
-            } else {
-                for _ in 0..main_cols {
-                    row.push(crate::session::terminal::TerminalCell::default());
-                }
-            }
-
-            merged_rows.push(row);
-        }
-
-        // Prepare the merged content.
-        let clip = TextBounds {
-            left: 0,
-            top: 0,
-            right: self.config.width as i32,
-            bottom: self.config.height as i32,
+        // Prepare sidebar and main terminal content as two separate regions
+        // rendered at different x offsets.
+        let sidebar_clip = TextBounds {
+            left: sidebar_rect.x as i32,
+            top: sidebar_rect.y as i32,
+            right: (sidebar_rect.x + sidebar_rect.width) as i32,
+            bottom: (sidebar_rect.y + sidebar_rect.height) as i32,
+        };
+        let main_clip = TextBounds {
+            left: main_rect.x as i32,
+            top: main_rect.y as i32,
+            right: (main_rect.x + main_rect.width) as i32,
+            bottom: (main_rect.y + main_rect.height) as i32,
         };
 
-        // Use sidebar_rect.x=0 as offset since the merged grid starts at 0.
-        let _ = sidebar_rect;
-        let _ = main_rect;
-        self.text_renderer.render_cells_prepare(
+        self.text_renderer.render_two_regions_prepare(
             &self.device,
             &self.queue,
             &self.grid,
-            &merged_rows,
+            &sidebar_cells,
+            sidebar_rect.x,
+            sidebar_rect.y,
+            sidebar_clip,
+            &content.rows,
+            main_rect.x,
+            main_rect.y,
+            main_clip,
             surface_size,
-            0.0,
-            0.0,
-            Some(clip),
         )?;
 
         // Single render pass: clear + text
