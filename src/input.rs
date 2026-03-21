@@ -70,6 +70,11 @@ impl InputHandler {
         self.mode
     }
 
+    /// Return the current modifier state.
+    pub fn modifiers(&self) -> ModifiersState {
+        self.modifiers
+    }
+
     /// Force-set the input mode (e.g. from mouse click).
     pub fn set_mode(&mut self, mode: InputMode) {
         self.mode = mode;

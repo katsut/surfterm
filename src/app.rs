@@ -282,6 +282,33 @@ impl App {
         self.resize_active_session_to_card();
     }
 
+    /// Adjust font size by delta (positive = larger, negative = smaller).
+    fn zoom_font_size(&mut self, delta: f32) {
+        if let Some(renderer) = self.renderer.as_mut() {
+            let mut theme = renderer.theme.clone();
+            let new_size = (theme.font.size + delta).clamp(6.0, 48.0);
+            theme.font.size = new_size;
+            renderer.set_theme(theme);
+            self.cols = renderer.grid.main_cols();
+            self.rows = renderer.grid.main_rows();
+            info!(font_size = new_size, "Font size changed");
+            self.resize_active_session_to_card();
+        }
+    }
+
+    /// Reset font size to the theme default (13.0).
+    fn reset_font_size(&mut self) {
+        if let Some(renderer) = self.renderer.as_mut() {
+            let mut theme = renderer.theme.clone();
+            theme.font.size = 13.0;
+            renderer.set_theme(theme);
+            self.cols = renderer.grid.main_cols();
+            self.rows = renderer.grid.main_rows();
+            info!("Font size reset to 13.0");
+            self.resize_active_session_to_card();
+        }
+    }
+
     /// Handle a mouse click at the given physical pixel position.
     fn handle_click(&mut self, pos: PhysicalPosition<f64>) {
         let x = pos.x as f32;
@@ -576,6 +603,38 @@ impl ApplicationHandler<AppEvent> for App {
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
+                // Handle Cmd+=/- for font size zoom before InputHandler
+                if event.state == ElementState::Pressed
+                    && self.input_handler.modifiers().super_key()
+                {
+                    if let winit::keyboard::Key::Character(ref c) = event.logical_key {
+                        match c.as_str() {
+                            "=" | "+" => {
+                                self.zoom_font_size(1.0);
+                                if let Some(window) = self.window.as_ref() {
+                                    window.request_redraw();
+                                }
+                                return;
+                            }
+                            "-" => {
+                                self.zoom_font_size(-1.0);
+                                if let Some(window) = self.window.as_ref() {
+                                    window.request_redraw();
+                                }
+                                return;
+                            }
+                            "0" => {
+                                self.reset_font_size();
+                                if let Some(window) = self.window.as_ref() {
+                                    window.request_redraw();
+                                }
+                                return;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
                 let action = self.input_handler.handle_key(&event);
                 match action {
                     InputAction::SendToPty(data) => {
