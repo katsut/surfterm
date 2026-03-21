@@ -8,15 +8,15 @@ use tokio::sync::Mutex;
 use tracing::{info, instrument};
 use winit::{
     application::ApplicationHandler,
-    dpi::LogicalSize,
-    event::WindowEvent,
+    dpi::{LogicalSize, PhysicalPosition},
+    event::{ElementState, MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy},
-    window::{Window, WindowId},
+    window::{CursorIcon, Window, WindowId},
 };
 
 use crate::detector::patterns::default_claude_code_state_patterns;
 use crate::detector::StateDetector;
-use crate::input::{InputAction, InputHandler, SurftermCmd};
+use crate::input::{InputAction, InputHandler, InputMode, SurftermCmd};
 use crate::renderer::panel::{CardInfo, SidePanelEntry};
 use crate::renderer::Renderer;
 use crate::session::pty::PtyHandle;
@@ -61,6 +61,8 @@ struct App {
     session_order: Vec<SessionId>,
     active_session: Option<SessionId>,
     input_handler: InputHandler,
+    /// Last known cursor position in physical pixels.
+    cursor_position: PhysicalPosition<f64>,
     // Terminal dimensions (for the main area, excluding sidebar)
     cols: u16,
     rows: u16,
@@ -77,6 +79,7 @@ impl App {
             session_order: Vec::new(),
             active_session: None,
             input_handler: InputHandler::new(),
+            cursor_position: PhysicalPosition::new(0.0, 0.0),
             cols: 80,
             rows: 24,
         }
@@ -265,6 +268,164 @@ impl App {
 
         // Resize active session PTY to match card dimensions
         self.resize_active_session_to_card();
+    }
+
+    /// Handle a mouse click at the given physical pixel position.
+    fn handle_click(&mut self, pos: PhysicalPosition<f64>) {
+        let x = pos.x as f32;
+        let y = pos.y as f32;
+
+        // We need grid info from the renderer; bail out if not initialized.
+        let (sidebar_rect, main_rect, cell_height, cell_width, main_cols, main_rows, scale_factor) = {
+            match self.renderer.as_ref() {
+                Some(r) => (
+                    r.grid.sidebar_rect(),
+                    r.grid.main_rect(),
+                    r.grid.cell_height,
+                    r.grid.cell_width,
+                    r.grid.main_cols() as usize,
+                    r.grid.main_rows() as usize,
+                    r.scale_factor,
+                ),
+                None => return,
+            }
+        };
+
+        if x >= sidebar_rect.x {
+            // Click is in the sidebar area.
+            self.handle_sidebar_click(y, cell_height);
+        } else if x < main_rect.width {
+            // Click is in the main area.
+            self.handle_main_area_click(y, cell_height, cell_width, main_cols, main_rows, scale_factor);
+        }
+
+        if let Some(window) = self.window.as_ref() {
+            window.request_redraw();
+        }
+    }
+
+    /// Handle a click in the sidebar.
+    ///
+    /// Row 0 = [+ New Session], Row 1 = separator, Row 2+ = session entries.
+    fn handle_sidebar_click(&mut self, y: f32, cell_height: f32) {
+        if cell_height <= 0.0 {
+            return;
+        }
+        let row = (y / cell_height) as usize;
+
+        if row == 0 {
+            // Click on [+ New Session]
+            self.spawn_session();
+        } else if row >= 2 {
+            // Session entry; row 2 = sessions[0], row 3 = sessions[1], etc.
+            let session_index = row - 2;
+            if let Some(id) = self.session_order.get(session_index).copied() {
+                self.switch_to_session(id);
+            }
+        }
+        // Row 1 is the separator — ignore clicks on it.
+    }
+
+    /// Handle a click in the main content area (card stack).
+    ///
+    /// The main area layout:
+    /// - Row 0: active card title bar
+    /// - Rows 1..(1+active_content_rows): terminal content
+    /// - Bottom rows: background card tabs
+    fn handle_main_area_click(
+        &mut self,
+        y: f32,
+        cell_height: f32,
+        _cell_width: f32,
+        _main_cols: usize,
+        main_rows: usize,
+        _scale_factor: f32,
+    ) {
+        if cell_height <= 0.0 {
+            return;
+        }
+        let row = (y / cell_height) as usize;
+
+        let num_bg_cards = self
+            .renderer
+            .as_ref()
+            .map(|r| r.card_stack.background_cards().len())
+            .unwrap_or(0);
+        let bg_rows = num_bg_cards.min(main_rows.saturating_sub(2));
+        let active_content_rows = main_rows.saturating_sub(1 + bg_rows);
+        let bg_start_row = 1 + active_content_rows;
+
+        if row >= bg_start_row && row < bg_start_row + bg_rows {
+            // Click is on a background card tab.
+            let bg_index = row - bg_start_row;
+
+            // Retrieve the session id of the background card at this index.
+            let session_id = self
+                .renderer
+                .as_ref()
+                .and_then(|r| r.card_stack.background_cards().get(bg_index))
+                .map(|card| card.session_id);
+
+            if let Some(id) = session_id {
+                self.switch_to_session(id);
+            }
+        } else if row >= 1 && row < bg_start_row {
+            // Click is in the active card terminal content area — switch to Insert mode.
+            self.input_handler.set_mode(InputMode::Insert);
+        }
+    }
+
+    /// Determine whether the cursor is over a clickable element and return the
+    /// appropriate cursor icon.
+    fn cursor_icon_for_position(&self, pos: PhysicalPosition<f64>) -> CursorIcon {
+        let x = pos.x as f32;
+        let y = pos.y as f32;
+
+        let (sidebar_rect, cell_height, main_rows) = {
+            match self.renderer.as_ref() {
+                Some(r) => (
+                    r.grid.sidebar_rect(),
+                    r.grid.cell_height,
+                    r.grid.main_rows() as usize,
+                ),
+                None => return CursorIcon::Default,
+            }
+        };
+
+        if cell_height <= 0.0 {
+            return CursorIcon::Default;
+        }
+
+        if x >= sidebar_rect.x {
+            // Sidebar area
+            let row = (y / cell_height) as usize;
+            if row == 0 {
+                // [+ New Session]
+                return CursorIcon::Pointer;
+            } else if row >= 2 {
+                let session_index = row - 2;
+                if session_index < self.session_order.len() {
+                    return CursorIcon::Pointer;
+                }
+            }
+        } else {
+            // Main area — check background card tab rows
+            let num_bg_cards = self
+                .renderer
+                .as_ref()
+                .map(|r| r.card_stack.background_cards().len())
+                .unwrap_or(0);
+            let bg_rows = num_bg_cards.min(main_rows.saturating_sub(2));
+            let active_content_rows = main_rows.saturating_sub(1 + bg_rows);
+            let bg_start_row = 1 + active_content_rows;
+            let row = (y / cell_height) as usize;
+
+            if row >= bg_start_row && row < bg_start_row + bg_rows {
+                return CursorIcon::Pointer;
+            }
+        }
+
+        CursorIcon::Default
     }
 
     /// Resize the active session's terminal and PTY to match the active card
@@ -476,6 +637,21 @@ impl ApplicationHandler<AppEvent> for App {
                     InputAction::None => {}
                 }
             }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.cursor_position = position;
+                let icon = self.cursor_icon_for_position(position);
+                if let Some(window) = self.window.as_ref() {
+                    window.set_cursor(icon);
+                }
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                ..
+            } => {
+                let pos = self.cursor_position;
+                self.handle_click(pos);
+            }
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.input_handler.set_modifiers(modifiers.state());
             }
@@ -601,4 +777,68 @@ pub fn run() -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    /// Test sidebar click row calculation logic.
+    ///
+    /// Layout: Row 0 = [+ New Session], Row 1 = separator, Row 2+ = session entries.
+    #[test]
+    fn sidebar_click_row_calculation() {
+        let cell_height: f32 = 23.0;
+
+        // Click at y=5 (within first row) → row 0 → New Session
+        let row = (5.0_f32 / cell_height) as usize;
+        assert_eq!(row, 0);
+
+        // Click at y=23 (start of second row) → row 1 → separator
+        let row = (23.0_f32 / cell_height) as usize;
+        assert_eq!(row, 1);
+
+        // Click at y=46 (start of third row) → row 2 → first session (index 0)
+        let row = (46.0_f32 / cell_height) as usize;
+        assert_eq!(row, 2);
+        assert_eq!(row - 2, 0); // session_index
+
+        // Click at y=69 (start of fourth row) → row 3 → second session (index 1)
+        let row = (69.0_f32 / cell_height) as usize;
+        assert_eq!(row, 3);
+        assert_eq!(row - 2, 1); // session_index
+
+        // Click at y=100 → row 4 → third session (index 2)
+        let row = (100.0_f32 / cell_height) as usize;
+        assert_eq!(row, 4);
+        assert_eq!(row - 2, 2); // session_index
+    }
+
+    /// Test background card tab row calculation in the main area.
+    #[test]
+    fn background_card_tab_row_calculation() {
+        let main_rows: usize = 34;
+        let num_bg_cards: usize = 2;
+
+        let bg_rows = num_bg_cards.min(main_rows.saturating_sub(2)); // 2
+        let active_content_rows = main_rows.saturating_sub(1 + bg_rows); // 31
+        let bg_start_row = 1 + active_content_rows; // 32
+
+        assert_eq!(bg_rows, 2);
+        assert_eq!(active_content_rows, 31);
+        assert_eq!(bg_start_row, 32);
+
+        // Row 32 → bg card index 0
+        let row = 32_usize;
+        assert!(row >= bg_start_row && row < bg_start_row + bg_rows);
+        assert_eq!(row - bg_start_row, 0);
+
+        // Row 33 → bg card index 1
+        let row = 33_usize;
+        assert!(row >= bg_start_row && row < bg_start_row + bg_rows);
+        assert_eq!(row - bg_start_row, 1);
+
+        // Row 31 → NOT in bg card area (it's active content)
+        let row = 31_usize;
+        assert!(!(row >= bg_start_row && row < bg_start_row + bg_rows));
+
+        // Row 34 → out of bounds
+        let row = 34_usize;
+        assert!(!(row >= bg_start_row && row < bg_start_row + bg_rows));
+    }
+}

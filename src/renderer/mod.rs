@@ -35,7 +35,7 @@ pub struct Renderer {
     pub state_panel: StatePanel,
     pub side_panel: SidePanel,
     pub card_stack: CardStack,
-    scale_factor: f32,
+    pub scale_factor: f32,
 }
 
 impl Renderer {

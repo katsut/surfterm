@@ -70,6 +70,11 @@ impl InputHandler {
         self.mode
     }
 
+    /// Force-set the input mode (e.g. from mouse click).
+    pub fn set_mode(&mut self, mode: InputMode) {
+        self.mode = mode;
+    }
+
     /// Update the modifier state. Call this when `ModifiersChanged` events arrive.
     pub fn set_modifiers(&mut self, modifiers: ModifiersState) {
         self.modifiers = modifiers;
@@ -551,5 +556,17 @@ mod tests {
             ModifiersState::empty(),
         );
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn set_mode_switches_mode() {
+        let mut handler = InputHandler::new();
+        assert_eq!(handler.mode(), InputMode::Insert);
+
+        handler.set_mode(InputMode::Normal);
+        assert_eq!(handler.mode(), InputMode::Normal);
+
+        handler.set_mode(InputMode::Insert);
+        assert_eq!(handler.mode(), InputMode::Insert);
     }
 }
