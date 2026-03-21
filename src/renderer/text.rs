@@ -39,6 +39,8 @@ pub struct TextRenderer {
     renderer: glyphon::TextRenderer,
     /// Font size in pixels used for terminal cell rendering.
     pub font_size: f32,
+    /// Font family name. Empty string means system default monospace.
+    pub font_family: String,
 }
 
 #[allow(dead_code)]
@@ -70,6 +72,7 @@ impl TextRenderer {
             atlas,
             renderer,
             font_size: 16.0,
+            font_family: String::new(),
         }
     }
 
@@ -96,6 +99,8 @@ impl TextRenderer {
 
         let mut cell_buffers: Vec<CellBuffer> = Vec::new();
 
+        let font_family_str = self.font_family.clone();
+
         for region in regions {
             let metrics = Metrics::new(self.font_size, region.cell_height);
 
@@ -119,16 +124,22 @@ impl TextRenderer {
                         Weight::NORMAL
                     };
 
+                    let family = if font_family_str.is_empty() {
+                        Family::Monospace
+                    } else {
+                        Family::Name(&font_family_str)
+                    };
+
                     let ch = cell.c.to_string();
                     let attrs = Attrs::new()
-                        .family(Family::Monospace)
+                        .family(family)
                         .weight(weight)
                         .color(Color::rgb(cell.fg.r, cell.fg.g, cell.fg.b));
 
                     buffer.set_rich_text(
                         &mut self.font_system,
                         [(&*ch, attrs)],
-                        &Attrs::new().family(Family::Monospace),
+                        &Attrs::new().family(family),
                         Shaping::Basic,
                         None,
                     );

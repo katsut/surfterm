@@ -146,12 +146,13 @@ impl Renderer {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
-            let physical_font_size = DEFAULT_FONT_SIZE * self.scale_factor;
-            self.grid = GridLayout::with_scale_factor(
+            let physical_font_size = self.theme.font.size * self.scale_factor;
+            self.grid = GridLayout::with_scale_factor_and_line_height(
                 new_size.width,
                 new_size.height,
                 physical_font_size,
                 self.scale_factor,
+                self.theme.font.line_height,
             );
             tracing::debug!(
                 width = new_size.width,
@@ -403,6 +404,23 @@ impl Renderer {
     /// Set the theme and update derived panel colors.
     #[allow(dead_code)]
     pub fn set_theme(&mut self, theme: SurftermTheme) {
+        // Update font size and grid from theme
+        let physical_font_size = theme.font.size * self.scale_factor;
+        self.text_renderer.font_size = physical_font_size;
+        self.grid = GridLayout::with_scale_factor_and_line_height(
+            self.size.width.max(1),
+            self.size.height.max(1),
+            physical_font_size,
+            self.scale_factor,
+            theme.font.line_height,
+        );
+        self.text_renderer.font_family = theme.font.family.clone();
+        tracing::info!(
+            font_family = %if theme.font.family.is_empty() { "system monospace" } else { &theme.font.family },
+            font_size = theme.font.size,
+            line_height = theme.font.line_height,
+            "Theme applied"
+        );
         self.panel_colors = PanelColors::from_theme(&theme);
         self.theme = theme;
     }

@@ -199,6 +199,28 @@ impl Default for ThemeColors {
     }
 }
 
+/// Font configuration.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct FontConfig {
+    /// Font family name. Use a monospace font.
+    pub family: String,
+    /// Font size in logical pixels (before scale factor).
+    pub size: f32,
+    /// Line height multiplier (1.0 = tight, 1.4 = comfortable).
+    pub line_height: f32,
+}
+
+impl Default for FontConfig {
+    fn default() -> Self {
+        Self {
+            family: String::new(), // empty = system default monospace
+            size: 13.0,            // Ghostty default
+            line_height: 1.2,
+        }
+    }
+}
+
 /// Comprehensive theme for the Surfterm application.
 ///
 /// All fields use `#[serde(default)]` so partial theme files work correctly:
@@ -207,6 +229,7 @@ impl Default for ThemeColors {
 #[serde(default)]
 pub struct SurftermTheme {
     pub colors: ThemeColors,
+    pub font: FontConfig,
 }
 
 /// Type alias for backward compatibility.

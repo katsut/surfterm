@@ -72,8 +72,26 @@ impl GridLayout {
         font_size: f32,
         scale_factor: f32,
     ) -> Self {
+        Self::with_scale_factor_and_line_height(
+            surface_width,
+            surface_height,
+            font_size,
+            scale_factor,
+            LINE_HEIGHT_FACTOR,
+        )
+    }
+
+    /// Create a new grid layout with explicit scale factor and line height.
+    #[instrument(skip_all)]
+    pub fn with_scale_factor_and_line_height(
+        surface_width: u32,
+        surface_height: u32,
+        font_size: f32,
+        scale_factor: f32,
+        line_height: f32,
+    ) -> Self {
         let cell_width = (font_size * CELL_WIDTH_FACTOR).ceil();
-        let cell_height = (font_size * LINE_HEIGHT_FACTOR).ceil();
+        let cell_height = (font_size * line_height).ceil();
 
         let sw = surface_width as f32;
         let sh = surface_height as f32;
