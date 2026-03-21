@@ -242,10 +242,20 @@ impl SidePanel {
             result.push(row);
         }
 
-        // Row 1: separator
+        // Row 1: separator (▁ lower one eighth block fills gap between cells)
         if result.len() < rows {
-            let sep: String = "\u{2500}".repeat(cols);
-            result.push(make_row_colored(&sep, cols, colors.side_separator, colors.background));
+            let mut sep_row = Vec::with_capacity(cols);
+            for _ in 0..cols {
+                sep_row.push(TerminalCell {
+                    c: '\u{2581}', // ▁
+                    fg: colors.side_separator,
+                    bg: colors.background,
+                    bold: false,
+                    italic: false,
+                    underline: false,
+                });
+            }
+            result.push(sep_row);
         }
 
         // Row 2+: session entries
@@ -371,19 +381,22 @@ impl CardStack {
         }
     }
 
-    /// Build the title bar row for a card as terminal cells.
+    /// Build the active card tab as 2 rows. Right edge is open (divider handles it).
     ///
-    /// Format: `"─ project_name [state] ────────────────"`
-    /// The title bar uses the given foreground and background colors.
-    pub fn build_title_bar(
-        &self,
+    /// Row 0: `╭──────────────────────` (top border, no right corner)
+    /// Row 1: `│ name       [state]  ` (content, no right border)
+    fn build_active_card_tab(
         card: &CardInfo,
         cols: usize,
         title_fg: Rgb,
         border_fg: Rgb,
         bg: Rgb,
         colors: &PanelColors,
-    ) -> Vec<TerminalCell> {
+    ) -> Vec<Vec<TerminalCell>> {
+        if cols < 2 {
+            return vec![Vec::new(), Vec::new()];
+        }
+
         let (state_label, state_fg) = match card.state {
             SessionState::Running => ("Running", colors.state_running),
             SessionState::WaitingForInput => ("Waiting", colors.state_waiting),
@@ -391,60 +404,116 @@ impl CardStack {
             SessionState::Idle => ("Idle", colors.state_idle),
         };
 
-        // Build: "─ project_name [state] ─────"
-        let content = format!("\u{2500} {} [{}] ", card.project_name, state_label);
-        let mut row = Vec::with_capacity(cols);
+        // Row 0: "╭────...────" (no right corner — divider closes it)
+        let mut border_row = Vec::with_capacity(cols);
+        border_row.push(TerminalCell {
+            c: '\u{256d}', // ╭
+            fg: border_fg, bg, bold: false, italic: false, underline: false,
+        });
+        for _ in 1..cols {
+            border_row.push(TerminalCell {
+                c: '\u{2500}', // ─
+                fg: border_fg, bg, bold: false, italic: false, underline: false,
+            });
+        }
 
-        // Collect chars for safe indexing (avoid byte-boundary panics with multibyte chars)
-        let content_chars: Vec<char> = content.chars().collect();
-        let bracket_open = content_chars.iter().position(|&c| c == '[');
-        let bracket_close = content_chars.iter().position(|&c| c == ']');
+        // Row 1: "│ name   [state] " (no right border — divider closes it)
+        let mut content_row = Vec::with_capacity(cols);
+        content_row.push(TerminalCell {
+            c: '\u{2502}', // │
+            fg: border_fg, bg, bold: false, italic: false, underline: false,
+        });
 
-        for (i, &ch) in content_chars.iter().enumerate().take(cols) {
-            let fg = if i == 0 {
-                border_fg
-            } else if bracket_open.is_some_and(|o| i > o) && bracket_close.is_some_and(|c| i < c) {
-                state_fg
-            } else if i >= 2 && i < 2 + card.project_name.chars().count() {
-                title_fg
+        let inner_cols = cols.saturating_sub(1); // only left border
+        Self::fill_card_content(&mut content_row, card, inner_cols, title_fg, border_fg, state_fg, state_label, bg);
+
+        vec![border_row, content_row]
+    }
+
+    /// Build a background card tab as 2 rows. No left/right borders (divider closes right).
+    ///
+    /// Row 0: `──────────────────────` (horizontal line only)
+    /// Row 1: ` name       [state]  ` (content, no borders)
+    fn build_bg_card_tab(
+        card: &CardInfo,
+        cols: usize,
+        title_fg: Rgb,
+        border_fg: Rgb,
+        bg: Rgb,
+        colors: &PanelColors,
+    ) -> Vec<Vec<TerminalCell>> {
+        if cols == 0 {
+            return vec![Vec::new(), Vec::new()];
+        }
+
+        let (state_label, state_fg) = match card.state {
+            SessionState::Running => ("Running", colors.state_running),
+            SessionState::WaitingForInput => ("Waiting", colors.state_waiting),
+            SessionState::Error => ("Error", colors.state_error),
+            SessionState::Idle => ("Idle", colors.state_idle),
+        };
+
+        // Row 0: just "────...────" (divider will show ┘ at the end)
+        let border_row: Vec<TerminalCell> = (0..cols)
+            .map(|_| TerminalCell {
+                c: '\u{2500}', // ─
+                fg: border_fg, bg, bold: false, italic: false, underline: false,
+            })
+            .collect();
+
+        // Row 1: " name   [state] " (no borders)
+        let mut content_row = Vec::with_capacity(cols);
+        Self::fill_card_content(&mut content_row, card, cols, title_fg, border_fg, state_fg, state_label, bg);
+
+        vec![border_row, content_row]
+    }
+
+    /// Fill card content cells: " name <padding> [state] "
+    fn fill_card_content(
+        row: &mut Vec<TerminalCell>,
+        card: &CardInfo,
+        cols: usize,
+        title_fg: Rgb,
+        border_fg: Rgb,
+        state_fg: Rgb,
+        state_label: &str,
+        bg: Rgb,
+    ) {
+        let state_part = format!("[{}]", state_label);
+        let name_chars: Vec<char> = card.project_name.chars().collect();
+        let state_chars: Vec<char> = state_part.chars().collect();
+        let name_display_len = name_chars.len().min(cols.saturating_sub(state_chars.len() + 3));
+        let state_start = cols.saturating_sub(state_chars.len() + 1);
+
+        for i in 0..cols {
+            if i == 0 {
+                row.push(TerminalCell {
+                    c: ' ', fg: title_fg, bg, bold: card.is_active, italic: false, underline: false,
+                });
+            } else if i >= 1 && i < 1 + name_display_len {
+                row.push(TerminalCell {
+                    c: name_chars[i - 1], fg: title_fg, bg, bold: card.is_active, italic: false, underline: false,
+                });
+            } else if i >= state_start && i < state_start + state_chars.len() {
+                let si = i - state_start;
+                let ch = state_chars[si];
+                let fg = if ch != '[' && ch != ']' { state_fg } else { border_fg };
+                row.push(TerminalCell {
+                    c: ch, fg, bg, bold: false, italic: false, underline: false,
+                });
             } else {
-                border_fg
-            };
-            row.push(TerminalCell {
-                c: ch,
-                fg,
-                bg,
-                bold: card.is_active,
-                italic: false,
-                underline: false,
-            });
+                row.push(TerminalCell {
+                    c: ' ', fg: border_fg, bg, bold: false, italic: false, underline: false,
+                });
+            }
         }
-
-        // Fill remaining with "─" border chars
-        while row.len() < cols {
-            row.push(TerminalCell {
-                c: '\u{2500}',
-                fg: border_fg,
-                bg,
-                bold: false,
-                italic: false,
-                underline: false,
-            });
-        }
-
-        row
     }
 
-    /// Build terminal cells for the active card's title bar (default colors).
-    pub fn active_title_bar(&self, cols: usize) -> Option<Vec<TerminalCell>> {
-        let colors = PanelColors::default();
-        self.active_title_bar_themed(cols, &colors)
-    }
-
-    /// Build terminal cells for the active card's title bar using theme colors.
-    pub fn active_title_bar_themed(&self, cols: usize, colors: &PanelColors) -> Option<Vec<TerminalCell>> {
+    /// Build terminal cells for the active card's tab using theme colors.
+    /// Returns 2 rows: top border + content row. Right edge open (divider handles it).
+    pub fn active_card_tab_themed(&self, cols: usize, colors: &PanelColors) -> Option<Vec<Vec<TerminalCell>>> {
         self.active_card().map(|card| {
-            self.build_title_bar(
+            Self::build_active_card_tab(
                 card,
                 cols,
                 colors.card_title_accent,
@@ -455,31 +524,19 @@ impl CardStack {
         })
     }
 
-    /// Build terminal cells for background card header rows (default colors).
-    pub fn background_title_bars(
-        &self,
-        cols: usize,
-        scale_factor: f32,
-        cell_width: f32,
-    ) -> Vec<(usize, Vec<TerminalCell>)> {
-        let colors = PanelColors::default();
-        self.background_title_bars_themed(cols, scale_factor, cell_width, &colors)
-    }
-
-    /// Build terminal cells for background card header rows using theme colors.
+    /// Build terminal cells for background card tabs using theme colors.
     ///
-    /// Each background card gets one row. The rows are meant to be rendered
-    /// at the bottom of the main area, each progressively offset to the right
-    /// to create the stacked card visual.
+    /// Each background card gets 2 rows (border line + content).
+    /// No left/right borders — the divider provides the right edge with ┘.
     ///
-    /// Returns: Vec of (left_offset_in_cells, row_cells).
-    pub fn background_title_bars_themed(
+    /// Returns: Vec of (left_offset_in_cells, tab_rows).
+    pub fn background_card_tabs_themed(
         &self,
         cols: usize,
         scale_factor: f32,
         cell_width: f32,
         colors: &PanelColors,
-    ) -> Vec<(usize, Vec<TerminalCell>)> {
+    ) -> Vec<(usize, Vec<Vec<TerminalCell>>)> {
         let card_offset_px = 20.0 * scale_factor;
         let offset_cells = (card_offset_px / cell_width).ceil() as usize;
 
@@ -490,7 +547,7 @@ impl CardStack {
                 let left_offset = offset_cells * (i + 1);
                 let available_cols = cols.saturating_sub(left_offset);
                 let bg_color = CARD_BG_LAYERS[i % CARD_BG_LAYERS.len()];
-                let row = self.build_title_bar(
+                let rows = Self::build_bg_card_tab(
                     card,
                     available_cols,
                     colors.card_bg_title,
@@ -498,7 +555,7 @@ impl CardStack {
                     bg_color,
                     colors,
                 );
-                (left_offset, row)
+                (left_offset, rows)
             })
             .collect()
     }
@@ -1589,7 +1646,7 @@ mod tests {
         let cells = panel.to_terminal_cells(10, 5, 1.0);
         let row1_text: String = cells[1].iter().map(|c| c.c).collect::<String>();
         assert!(
-            row1_text.contains('\u{2500}'),
+            row1_text.contains('\u{2581}'),
             "Expected separator at row 1, got: '{}'",
             row1_text
         );

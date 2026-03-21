@@ -451,15 +451,20 @@ impl App {
             .as_ref()
             .map(|r| r.card_stack.background_cards().len())
             .unwrap_or(0);
-        let bg_rows = num_bg_cards.min(main_rows.saturating_sub(2));
-        let active_content_rows = main_rows.saturating_sub(1 + bg_rows);
-        let bg_start_row = 1 + active_content_rows;
+        let max_visible_bg = 3;
+        let visible_bg = num_bg_cards.min(max_visible_bg);
+        let has_overflow = num_bg_cards > max_visible_bg;
+        let overflow_rows = if has_overflow { 1 } else { 0 };
+        let active_tab_rows = 2;
+        let bg_tab_rows = (visible_bg * 2 + overflow_rows).min(main_rows.saturating_sub(3));
+        let active_content_rows = main_rows.saturating_sub(active_tab_rows + bg_tab_rows);
+        let bg_start_row = active_tab_rows + active_content_rows;
+        let bg_card_end = bg_start_row + visible_bg * 2;
 
-        if row >= bg_start_row && row < bg_start_row + bg_rows {
-            // Click is on a background card tab.
-            let bg_index = row - bg_start_row;
+        if row >= bg_start_row && row < bg_card_end {
+            // Click is on a background card tab (2 rows each).
+            let bg_index = (row - bg_start_row) / 2;
 
-            // Retrieve the session id of the background card at this index.
             let session_id = self
                 .renderer
                 .as_ref()
@@ -469,7 +474,7 @@ impl App {
             if let Some(id) = session_id {
                 self.switch_to_session(id);
             }
-        } else if row >= 1 && row < bg_start_row {
+        } else if row >= active_tab_rows && row < bg_start_row {
             // Click is in the active card terminal content area — switch to Insert mode.
             self.input_handler.set_mode(InputMode::Insert);
         }
@@ -515,12 +520,18 @@ impl App {
                 .as_ref()
                 .map(|r| r.card_stack.background_cards().len())
                 .unwrap_or(0);
-            let bg_rows = num_bg_cards.min(main_rows.saturating_sub(2));
-            let active_content_rows = main_rows.saturating_sub(1 + bg_rows);
-            let bg_start_row = 1 + active_content_rows;
+            let max_visible_bg = 3;
+            let visible_bg = num_bg_cards.min(max_visible_bg);
+            let has_overflow = num_bg_cards > max_visible_bg;
+            let overflow_rows = if has_overflow { 1 } else { 0 };
+            let active_tab_rows = 2;
+            let bg_tab_rows = (visible_bg * 2 + overflow_rows).min(main_rows.saturating_sub(3));
+            let active_content_rows = main_rows.saturating_sub(active_tab_rows + bg_tab_rows);
+            let bg_start_row = active_tab_rows + active_content_rows;
+            let bg_card_end = bg_start_row + visible_bg * 2;
             let row = (y / cell_height) as usize;
 
-            if row >= bg_start_row && row < bg_start_row + bg_rows {
+            if row >= bg_start_row && row < bg_card_end {
                 return CursorIcon::Pointer;
             }
         }

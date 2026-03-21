@@ -157,15 +157,38 @@ pub fn encode_key(key: &Key, modifiers: ModifiersState) -> Option<Vec<u8>> {
         }
     }
 
+    // Cmd+Backspace: delete entire line (Ctrl+U)
+    if modifiers.super_key() {
+        if let Key::Named(NamedKey::Backspace) = key {
+            return Some(vec![0x15]); // Ctrl+U
+        }
+    }
+
+    // Alt/Opt modifiers for word-level movement and deletion
+    if modifiers.alt_key() {
+        match key {
+            Key::Named(NamedKey::Backspace) => return Some(b"\x1b\x7f".to_vec()), // Alt+Backspace: delete word
+            Key::Named(NamedKey::ArrowLeft) => return Some(b"\x1bb".to_vec()),     // Alt+Left: word left
+            Key::Named(NamedKey::ArrowRight) => return Some(b"\x1bf".to_vec()),    // Alt+Right: word right
+            Key::Character(c) => {
+                // Alt+char sends ESC + char
+                let mut bytes = vec![0x1b];
+                bytes.extend_from_slice(c.as_str().as_bytes());
+                return Some(bytes);
+            }
+            _ => {}
+        }
+    }
+
     match key {
-        Key::Named(named) => encode_named_key(named),
+        Key::Named(named) => encode_named_key(named, modifiers),
         Key::Character(c) => Some(c.as_str().as_bytes().to_vec()),
         _ => None,
     }
 }
 
 /// Encode named (special) keys into their ANSI / VT escape sequences.
-fn encode_named_key(key: &NamedKey) -> Option<Vec<u8>> {
+fn encode_named_key(key: &NamedKey, _modifiers: ModifiersState) -> Option<Vec<u8>> {
     match key {
         NamedKey::Space => Some(b" ".to_vec()),
         NamedKey::Enter => Some(b"\r".to_vec()),
