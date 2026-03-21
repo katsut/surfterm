@@ -174,6 +174,16 @@ impl PtyHandle {
         .expect("blocking resize task panicked")
     }
 
+    /// Get a clone of the writer Arc for shared write access.
+    pub fn writer(&self) -> Arc<Mutex<Box<dyn Write + Send>>> {
+        Arc::clone(&self.writer)
+    }
+
+    /// Get a clone of the master Arc for shared resize access.
+    pub fn master(&self) -> Arc<Mutex<Box<dyn MasterPty + Send>>> {
+        Arc::clone(&self.master)
+    }
+
     /// Wait until the child process has exited.
     #[instrument(skip(self))]
     pub async fn wait_for_exit(&self) {
