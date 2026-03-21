@@ -143,6 +143,7 @@ pub fn encode_key(key: &Key, modifiers: ModifiersState) -> Option<Vec<u8>> {
 /// Encode named (special) keys into their ANSI / VT escape sequences.
 fn encode_named_key(key: &NamedKey) -> Option<Vec<u8>> {
     match key {
+        NamedKey::Space => Some(b" ".to_vec()),
         NamedKey::Enter => Some(b"\r".to_vec()),
         NamedKey::Tab => Some(b"\t".to_vec()),
         NamedKey::Backspace => Some(vec![0x7f]),
@@ -196,6 +197,13 @@ mod tests {
         assert_eq!(handler.mode(), InputMode::Insert);
         let action = handler.process_key(&char_key("a"));
         assert_eq!(action, InputAction::SendToPty(b"a".to_vec()));
+    }
+
+    #[test]
+    fn space_key_sends_space_byte() {
+        let mut handler = InputHandler::new();
+        let action = handler.process_key(&named_key(NamedKey::Space));
+        assert_eq!(action, InputAction::SendToPty(b" ".to_vec()));
     }
 
     #[test]
