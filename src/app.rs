@@ -37,6 +37,8 @@ pub enum AppEvent {
     },
     /// A session's PTY process has exited.
     SessionExited(SessionId),
+    /// Theme file changed, reload it.
+    ThemeChanged,
     /// Request a redraw of the window.
     RequestRedraw,
 }
@@ -73,6 +75,11 @@ struct App {
     /// macOS menu bar (kept alive for the lifetime of the app).
     #[allow(dead_code)]
     app_menu: Option<AppMenu>,
+    /// Config directory path for theme reloading.
+    config_dir: std::path::PathBuf,
+    /// File watcher for theme hot-reload (kept alive).
+    #[allow(dead_code)]
+    theme_watcher: Option<notify::RecommendedWatcher>,
 }
 
 impl App {
@@ -90,6 +97,8 @@ impl App {
             cols: 80,
             rows: 24,
             app_menu: None,
+            config_dir: std::path::PathBuf::new(),
+            theme_watcher: None,
         }
     }
 
@@ -280,6 +289,58 @@ impl App {
 
         // Resize active session PTY to match card dimensions
         self.resize_active_session_to_card();
+    }
+
+    /// Start watching theme files for hot-reload.
+    fn start_theme_watcher(&mut self, config_dir: &std::path::Path, cwd: &std::path::Path) {
+        use notify::{Event, EventKind, RecursiveMode, Watcher};
+
+        let proxy = self.event_proxy.clone();
+        let mut watcher = match notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
+            if let Ok(event) = res {
+                if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
+                    let _ = proxy.send_event(AppEvent::ThemeChanged);
+                }
+            }
+        }) {
+            Ok(w) => w,
+            Err(e) => {
+                tracing::warn!("Failed to create theme file watcher: {e}");
+                return;
+            }
+        };
+
+        // Watch global theme
+        let theme_path = config_dir.join("theme.toml");
+        if theme_path.exists() {
+            let _ = watcher.watch(&theme_path, RecursiveMode::NonRecursive);
+        }
+        // Watch the config directory itself (in case theme.toml is created later)
+        if config_dir.exists() {
+            let _ = watcher.watch(config_dir, RecursiveMode::NonRecursive);
+        }
+
+        // Watch local .surfterm/theme.toml
+        let local_dir = cwd.join(".surfterm");
+        if local_dir.exists() {
+            let _ = watcher.watch(&local_dir, RecursiveMode::NonRecursive);
+        }
+
+        self.theme_watcher = Some(watcher);
+        info!("Theme file watcher started");
+    }
+
+    /// Reload theme from config files and apply to renderer.
+    fn reload_theme(&mut self) {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let theme = ThemeManager::load_theme(&self.config_dir, &cwd);
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.set_theme(theme);
+            self.cols = renderer.grid.main_cols();
+            self.rows = renderer.grid.main_rows();
+            self.resize_active_session_to_card();
+            info!("Theme reloaded");
+        }
     }
 
     /// Adjust font size by delta (positive = larger, negative = smaller).
@@ -538,6 +599,10 @@ impl ApplicationHandler<AppEvent> for App {
         let cwd = std::env::current_dir().unwrap_or_default();
         let theme = ThemeManager::load_theme(&config_dir, &cwd);
         renderer.set_theme(theme);
+        self.config_dir = config_dir.clone();
+
+        // Start watching theme files for hot-reload
+        self.start_theme_watcher(&config_dir, &cwd);
 
         // Calculate terminal dimensions from main area (excluding sidebar).
         // These are initial values; they will be adjusted by update_card_stack
@@ -831,6 +896,12 @@ impl ApplicationHandler<AppEvent> for App {
                 info!(%session_id, "Session exited");
                 // We keep the session in the list so user can see its final state.
                 // They can explicitly kill it with 'x'.
+            }
+            AppEvent::ThemeChanged => {
+                self.reload_theme();
+                if let Some(window) = self.window.as_ref() {
+                    window.request_redraw();
+                }
             }
             AppEvent::RequestRedraw => {
                 if let Some(window) = self.window.as_ref() {
