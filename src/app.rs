@@ -702,9 +702,12 @@ impl ApplicationHandler<AppEvent> for App {
                                 let cursor_y = renderer.grid.main_rect().y
                                     + (active_tab_rows as f32 + content.cursor_row as f32)
                                         * renderer.grid.cell_height;
+                                // Position IME candidate window right below the text
+                                // Use font_size instead of cell_height to avoid line_height gap
+                                let ime_y = cursor_y as i32 + renderer.text_renderer.font_size as i32;
                                 window.set_ime_cursor_area(
-                                    PhysicalPosition::new(cursor_x as i32, cursor_y as i32 + renderer.grid.cell_height as i32),
-                                    winit::dpi::PhysicalSize::new(renderer.grid.cell_width as u32, renderer.grid.cell_height as u32),
+                                    PhysicalPosition::new(cursor_x as i32, ime_y),
+                                    winit::dpi::PhysicalSize::new(renderer.grid.cell_width as u32, renderer.text_renderer.font_size as u32),
                                 );
                             }
 
