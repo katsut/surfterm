@@ -260,8 +260,8 @@ impl Renderer {
             });
         }
 
-        // Reserve 1 column for right divider, 1 column for left border
-        let main_cols = (self.grid.main_cols() as usize).saturating_sub(2);
+        // Reserve 1 column for right divider
+        let main_cols = (self.grid.main_cols() as usize).saturating_sub(1);
         let main_rows = self.grid.main_rows() as usize;
         let num_bg_cards = self.card_stack.background_cards().len();
 
@@ -274,54 +274,20 @@ impl Renderer {
         let active_tab_rows = 2;
         let active_content_rows = main_rows.saturating_sub(active_tab_rows + bg_tab_rows);
 
-        // Left border x and content x (shifted 1 column right)
-        let left_border_x = main_rect.x;
-        let content_x = main_rect.x + self.grid.cell_width;
+        let content_x = main_rect.x;
 
         // ── Active card tab (rows 0-1: border + name) ──
-        // Tab includes its own left border (╭ and │), rendered at main_rect.x
-        if let Some(tab_rows) = self.card_stack.active_card_tab_themed(main_cols + 1, &self.panel_colors) {
+        if let Some(tab_rows) = self.card_stack.active_card_tab_themed(main_cols, &self.panel_colors) {
             regions.push(RenderRegion {
                 cells: tab_rows,
-                origin_x: left_border_x,
+                origin_x: content_x,
                 origin_y: main_rect.y,
                 cell_width: self.grid.cell_width,
                 cell_height: self.grid.cell_height,
             });
         }
 
-        // ── Active card left border (dense, from row 2 down through content) ──
-        {
-            let border_fg = self.panel_colors.card_border;
-            let border_bg = self.panel_colors.background;
-            let border_start_y = main_rect.y + active_tab_rows as f32 * self.grid.cell_height;
-            let border_end_y = main_rect.y + (active_tab_rows + active_content_rows) as f32 * self.grid.cell_height;
-            let total_height = border_end_y - border_start_y;
-
-            if total_height > 0.0 {
-                let dense_height = self.text_renderer.font_size;
-                let dense_count = (total_height / dense_height).ceil() as usize;
-                let dense_cells: Vec<Vec<TerminalCell>> = (0..dense_count)
-                    .map(|_| vec![TerminalCell {
-                        c: '\u{2595}', // ▕
-                        fg: border_fg,
-                        bg: border_bg,
-                        bold: false,
-                        italic: false,
-                        underline: false,
-                    }])
-                    .collect();
-                regions.push(RenderRegion {
-                    cells: dense_cells,
-                    origin_x: left_border_x,
-                    origin_y: border_start_y,
-                    cell_width: self.grid.cell_width,
-                    cell_height: dense_height,
-                });
-            }
-        }
-
-        // ── Active card terminal content (rows 2+, shifted 1 col right for border) ──
+        // ── Active card terminal content (rows 2+, shifted 1 col right for tab alignment) ──
         {
             let clipped_rows: Vec<Vec<_>> = content
                 .rows
@@ -609,8 +575,8 @@ impl Renderer {
     /// Returns `(cols, rows)` accounting for the title bar row and background
     /// card tab rows at the bottom.
     pub fn active_card_dimensions(&self) -> (u16, u16) {
-        // Subtract 2 columns: 1 for left border, 1 for right divider
-        let main_cols = self.grid.main_cols().saturating_sub(2);
+        // Subtract 1 column for right divider
+        let main_cols = self.grid.main_cols().saturating_sub(1);
         let main_rows = self.grid.main_rows() as usize;
         let num_bg_cards = self.card_stack.background_cards().len();
         let max_visible_bg = 3;
