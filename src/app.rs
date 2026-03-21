@@ -242,7 +242,7 @@ impl App {
 
     /// Build side panel entries from current sessions and push to renderer.
     fn update_side_panel(&mut self) {
-        let entries: Vec<SidePanelEntry> = self
+        let mut entries: Vec<SidePanelEntry> = self
             .session_order
             .iter()
             .filter_map(|id| {
@@ -256,8 +256,9 @@ impl App {
             })
             .collect();
 
-        // Keep session_order (creation order) — no sorting.
-        // Active session is visually indicated by highlight, not position.
+        // Active session goes to the back (bottom) of the list.
+        // Waiting sessions stay near the top — like a queue.
+        entries.sort_by_key(|e| e.is_active);
 
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.update_side_panel(entries);
