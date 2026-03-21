@@ -373,13 +373,17 @@ impl CardStack {
         let content = format!("\u{2500} {} [{}] ", card.project_name, state_label);
         let mut row = Vec::with_capacity(cols);
 
-        for (i, ch) in content.chars().enumerate().take(cols) {
+        // Collect chars for safe indexing (avoid byte-boundary panics with multibyte chars)
+        let content_chars: Vec<char> = content.chars().collect();
+        let bracket_open = content_chars.iter().position(|&c| c == '[');
+        let bracket_close = content_chars.iter().position(|&c| c == ']');
+
+        for (i, &ch) in content_chars.iter().enumerate().take(cols) {
             let fg = if i == 0 {
                 border_fg
-            } else if content[..i].contains('[') && !content[..i].contains(']') {
-                // Inside [state] brackets
+            } else if bracket_open.is_some_and(|o| i > o) && bracket_close.is_some_and(|c| i < c) {
                 state_fg
-            } else if i >= 2 && i < 2 + card.project_name.len() {
+            } else if i >= 2 && i < 2 + card.project_name.chars().count() {
                 title_fg
             } else {
                 border_fg
