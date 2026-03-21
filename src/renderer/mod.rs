@@ -16,7 +16,8 @@ use self::grid::GridLayout;
 use self::panel::{DisplayMode, MessagePanel, StatePanel};
 use self::text::TextRenderer;
 
-/// Default font size in pixels for terminal cell rendering.
+/// Default font size in logical pixels for terminal cell rendering.
+/// This is multiplied by the window's scale factor for physical pixel rendering.
 const DEFAULT_FONT_SIZE: f32 = 16.0;
 
 /// GPU renderer managing wgpu surface, device, queue, grid layout, and text
@@ -33,6 +34,7 @@ pub struct Renderer {
     pub display_mode: DisplayMode,
     pub message_panel: MessagePanel,
     pub state_panel: StatePanel,
+    scale_factor: f32,
 }
 
 impl Renderer {
@@ -40,6 +42,7 @@ impl Renderer {
     #[instrument(skip_all)]
     pub async fn new(window: Arc<Window>) -> Result<Self> {
         let size = window.inner_size();
+        let scale_factor = window.scale_factor() as f32;
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
@@ -89,8 +92,10 @@ impl Renderer {
         };
         surface.configure(&device, &config);
 
-        let grid = GridLayout::new(size.width.max(1), size.height.max(1), DEFAULT_FONT_SIZE);
-        let text_renderer = TextRenderer::new(&device, &queue, surface_format);
+        let physical_font_size = DEFAULT_FONT_SIZE * scale_factor;
+        let grid = GridLayout::new(size.width.max(1), size.height.max(1), physical_font_size);
+        let mut text_renderer = TextRenderer::new(&device, &queue, surface_format);
+        text_renderer.font_size = physical_font_size;
 
         tracing::info!(
             width = size.width,
@@ -109,9 +114,10 @@ impl Renderer {
             size,
             grid,
             text_renderer,
-            display_mode: DisplayMode::Panels,
+            display_mode: DisplayMode::Raw,
             message_panel: MessagePanel::new(),
             state_panel: StatePanel::new(),
+            scale_factor,
         })
     }
 
@@ -123,7 +129,8 @@ impl Renderer {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
-            self.grid = GridLayout::new(new_size.width, new_size.height, DEFAULT_FONT_SIZE);
+            let physical_font_size = DEFAULT_FONT_SIZE * self.scale_factor;
+            self.grid = GridLayout::new(new_size.width, new_size.height, physical_font_size);
             tracing::debug!(
                 width = new_size.width,
                 height = new_size.height,

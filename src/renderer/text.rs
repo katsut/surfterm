@@ -22,7 +22,7 @@ pub struct TextRenderer {
     atlas: TextAtlas,
     renderer: glyphon::TextRenderer,
     /// Font size in pixels used for terminal cell rendering.
-    font_size: f32,
+    pub font_size: f32,
 }
 
 #[allow(dead_code)]

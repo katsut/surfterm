@@ -255,9 +255,27 @@ impl ApplicationHandler<AppEvent> for App {
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: AppEvent) {
         match event {
             AppEvent::PtyOutput(data) => {
+                tracing::debug!(bytes = data.len(), "PTY output received");
                 // Feed to terminal emulator
                 if let Some(terminal) = self.terminal.as_mut() {
                     terminal.feed(&data);
+                    let content = terminal.content();
+                    let non_empty_rows = content.rows.iter().filter(|r| r.iter().any(|c| c.c != ' ')).count();
+                    if non_empty_rows > 0 {
+                        // Log first non-empty row content and colors for debugging
+                        if let Some(row) = content.rows.iter().find(|r| r.iter().any(|c| c.c != ' ')) {
+                            let text: String = row.iter().map(|c| c.c).collect::<String>().trim_end().to_string();
+                            let first_cell = &row[0];
+                            tracing::info!(
+                                non_empty_rows,
+                                text_preview = %&text[..text.len().min(40)],
+                                fg_r = first_cell.fg.r,
+                                fg_g = first_cell.fg.g,
+                                fg_b = first_cell.fg.b,
+                                "Terminal has content"
+                            );
+                        }
+                    }
                 }
                 // Feed to StreamSplitter
                 if let Some(splitter) = self.splitter.as_ref() {
