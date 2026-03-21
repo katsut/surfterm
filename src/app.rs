@@ -9,7 +9,7 @@ use tracing::{info, instrument};
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalPosition},
-    event::{ElementState, MouseButton, WindowEvent},
+    event::{ElementState, Ime, MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy},
     window::{CursorIcon, Window, WindowId},
 };
@@ -635,6 +635,9 @@ impl ApplicationHandler<AppEvent> for App {
             "Window and renderer initialized"
         );
 
+        // Enable IME for CJK/multibyte input
+        window.set_ime_allowed(true);
+
         self.window = Some(window);
         self.renderer = Some(renderer);
 
@@ -695,6 +698,25 @@ impl ApplicationHandler<AppEvent> for App {
                 // Schedule next blink redraw
                 if let Some(window) = self.window.as_ref() {
                     window.request_redraw();
+                }
+            }
+            WindowEvent::Ime(ime) => {
+                if let Ime::Commit(text) = ime {
+                    // IME composed text (e.g. Japanese input) → send UTF-8 bytes to PTY
+                    if let Some(active_id) = self.active_session {
+                        if let Some(pipeline) = self.sessions.get(&active_id) {
+                            let writer = Arc::clone(&pipeline.writer);
+                            let bytes = text.into_bytes();
+                            self.tokio_handle.spawn(async move {
+                                let mut w = writer.lock().await;
+                                let _ = w.write_all(&bytes);
+                                let _ = w.flush();
+                            });
+                        }
+                    }
+                    // Reset cursor blink
+                    self.cursor_visible = true;
+                    self.cursor_blink_at = std::time::Instant::now();
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
