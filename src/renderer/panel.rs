@@ -507,6 +507,7 @@ impl CardStack {
 
     /// Build terminal cells for the active card's tab using theme colors.
     /// Returns 2 rows: top border + content row. Right edge open (divider handles it).
+    #[allow(dead_code)]
     pub fn active_card_tab_themed(&self, cols: usize, colors: &PanelColors) -> Option<Vec<Vec<TerminalCell>>> {
         self.active_card().map(|card| {
             Self::build_active_card_tab(
@@ -520,12 +521,113 @@ impl CardStack {
         })
     }
 
+    /// Build a single title line for the active card.
+    ///
+    /// Format: `── name [state] ─────────────`
+    pub fn active_title_line_themed(&self, cols: usize, colors: &PanelColors) -> Option<Vec<TerminalCell>> {
+        self.active_card().map(|card| {
+            Self::build_title_line(
+                card,
+                cols,
+                colors.card_title_accent,
+                colors.card_border,
+                colors.background,
+                colors,
+            )
+        })
+    }
+
+    /// Build a single horizontal title line for a card.
+    ///
+    /// Format: `── name [state] ─────────────`
+    fn build_title_line(
+        card: &CardInfo,
+        cols: usize,
+        title_fg: Rgb,
+        border_fg: Rgb,
+        bg: Rgb,
+        colors: &PanelColors,
+    ) -> Vec<TerminalCell> {
+        let (state_label, state_fg) = match card.state {
+            SessionState::Running => ("Running", colors.state_running),
+            SessionState::WaitingForInput => ("Waiting", colors.state_waiting),
+            SessionState::Error => ("Error", colors.state_error),
+            SessionState::Idle => ("Idle", colors.state_idle),
+        };
+
+        // Build: "── name [state] ─────"
+        let content = format!("\u{2500}\u{2500} {} [{}] ", card.project_name, state_label);
+        let content_chars: Vec<char> = content.chars().collect();
+        let mut row = Vec::with_capacity(cols);
+
+        let bracket_open = content_chars.iter().position(|&c| c == '[');
+        let bracket_close = content_chars.iter().position(|&c| c == ']');
+        let name_start = 3; // after "── "
+        let name_end = name_start + card.project_name.chars().count();
+
+        for (i, &ch) in content_chars.iter().enumerate().take(cols) {
+            let fg = if bracket_open.is_some_and(|o| i > o) && bracket_close.is_some_and(|c| i < c) {
+                state_fg
+            } else if i >= name_start && i < name_end {
+                title_fg
+            } else {
+                border_fg
+            };
+            row.push(TerminalCell {
+                c: ch, fg, bg, bold: card.is_active, italic: false, underline: false,
+            });
+        }
+
+        // Fill remaining with ─
+        while row.len() < cols {
+            row.push(TerminalCell {
+                c: '\u{2500}', fg: border_fg, bg, bold: false, italic: false, underline: false,
+            });
+        }
+
+        row
+    }
+
+    /// Build single-row title lines for background cards.
+    ///
+    /// Returns: Vec of (left_offset_in_cells, row_cells).
+    pub fn background_title_lines_themed(
+        &self,
+        cols: usize,
+        scale_factor: f32,
+        cell_width: f32,
+        colors: &PanelColors,
+    ) -> Vec<(usize, Vec<TerminalCell>)> {
+        let card_offset_px = 20.0 * scale_factor;
+        let offset_cells = (card_offset_px / cell_width).ceil() as usize;
+
+        self.background_cards()
+            .iter()
+            .enumerate()
+            .map(|(i, card)| {
+                let left_offset = offset_cells * (i + 1);
+                let available_cols = cols.saturating_sub(left_offset);
+                let bg_color = CARD_BG_LAYERS[i % CARD_BG_LAYERS.len()];
+                let row = Self::build_title_line(
+                    card,
+                    available_cols,
+                    colors.card_bg_title,
+                    colors.card_border,
+                    bg_color,
+                    colors,
+                );
+                (left_offset, row)
+            })
+            .collect()
+    }
+
     /// Build terminal cells for background card tabs using theme colors.
     ///
     /// Each background card gets 2 rows (border line + content).
     /// No left/right borders — the divider provides the right edge with ┘.
     ///
     /// Returns: Vec of (left_offset_in_cells, tab_rows).
+    #[allow(dead_code)]
     pub fn background_card_tabs_themed(
         &self,
         cols: usize,

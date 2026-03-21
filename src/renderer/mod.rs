@@ -215,12 +215,8 @@ impl Renderer {
         Ok(())
     }
 
-    /// Render terminal content with a stacked card layout in the main area
-    /// and the side panel on the right.
-    ///
-    /// The active card occupies most of the main area with a title bar at row 0
-    /// and terminal content starting from row 1. Background cards appear as
-    /// title bar rows at the bottom, progressively offset to the right.
+    /// Render terminal content with horizontal-line card separators and
+    /// the side panel on the right.
     #[instrument(skip(self, content))]
     pub fn render_content(&mut self, content: &TerminalContent) -> Result<()> {
         let output = self.acquire_surface_texture()?;
@@ -247,7 +243,7 @@ impl Renderer {
             &self.panel_colors,
         );
 
-        let mut regions = Vec::with_capacity(4);
+        let mut regions = Vec::with_capacity(8);
 
         // Sidebar region.
         if !sidebar_cells.is_empty() {
@@ -260,67 +256,34 @@ impl Renderer {
             });
         }
 
-        // Reserve 1 column for right divider, 1 column for left border
-        let main_cols = (self.grid.main_cols() as usize).saturating_sub(2);
+        // Reserve 1 column for right divider
+        let main_cols = (self.grid.main_cols() as usize).saturating_sub(1);
         let main_rows = self.grid.main_rows() as usize;
         let num_bg_cards = self.card_stack.background_cards().len();
 
-        // Active card: 2 rows. Background cards: max 3 shown (2 rows each) + 1 row for overflow.
+        // Active card: 1 title row. Background cards: 1 row each. Max 3 visible.
         let max_visible_bg = 3;
         let visible_bg = num_bg_cards.min(max_visible_bg);
         let has_overflow = num_bg_cards > max_visible_bg;
         let overflow_rows = if has_overflow { 1 } else { 0 };
-        let bg_tab_rows = (visible_bg * 2 + overflow_rows).min(main_rows.saturating_sub(3));
-        let active_tab_rows = 2;
+        let bg_tab_rows = (visible_bg + overflow_rows).min(main_rows.saturating_sub(2));
+        let active_tab_rows = 1;
         let active_content_rows = main_rows.saturating_sub(active_tab_rows + bg_tab_rows);
 
-        let left_border_x = main_rect.x;
-        let content_x = main_rect.x + self.grid.cell_width;
+        let content_x = main_rect.x;
 
-        // ── Active card tab (rows 0-1: ╭─── / │ name) ──
-        // Tab includes left border chars (╭ and │), so starts at left_border_x
-        if let Some(tab_rows) = self.card_stack.active_card_tab_themed(main_cols + 1, &self.panel_colors) {
+        // ── Active card title line (row 0): "── name [state] ────────" ──
+        if let Some(title_row) = self.card_stack.active_title_line_themed(main_cols, &self.panel_colors) {
             regions.push(RenderRegion {
-                cells: tab_rows,
-                origin_x: left_border_x,
+                cells: vec![title_row],
+                origin_x: content_x,
                 origin_y: main_rect.y,
                 cell_width: self.grid.cell_width,
                 cell_height: self.grid.cell_height,
             });
         }
 
-        // ── Active card left border (dense ▕, from row 2 down through content) ──
-        {
-            let border_fg = self.panel_colors.card_border;
-            let border_bg = self.panel_colors.background;
-            let border_start_y = main_rect.y + self.grid.cell_height; // start from row 1 (below top border line)
-            let border_end_y = main_rect.y + (active_tab_rows + active_content_rows) as f32 * self.grid.cell_height;
-            let total_height = border_end_y - border_start_y;
-
-            if total_height > 0.0 {
-                let dense_height = self.text_renderer.font_size;
-                let dense_count = (total_height / dense_height).ceil() as usize;
-                let dense_cells: Vec<Vec<TerminalCell>> = (0..dense_count)
-                    .map(|_| vec![TerminalCell {
-                        c: '\u{2595}', // ▕
-                        fg: border_fg,
-                        bg: border_bg,
-                        bold: false,
-                        italic: false,
-                        underline: false,
-                    }])
-                    .collect();
-                regions.push(RenderRegion {
-                    cells: dense_cells,
-                    origin_x: left_border_x,
-                    origin_y: border_start_y,
-                    cell_width: self.grid.cell_width,
-                    cell_height: dense_height,
-                });
-            }
-        }
-
-        // ── Active card terminal content (rows 2+, 1 col right of left border) ──
+        // ── Active card terminal content (rows 1+) ──
         {
             let clipped_rows: Vec<Vec<_>> = content
                 .rows
@@ -362,9 +325,9 @@ impl Renderer {
             }
         }
 
-        // ── Background card tabs (at bottom, max 3 visible + overflow) ──
+        // ── Background card title lines (at bottom, 1 row each) ──
         {
-            let bg_tabs = self.card_stack.background_card_tabs_themed(
+            let bg_lines = self.card_stack.background_title_lines_themed(
                 main_cols,
                 self.scale_factor,
                 self.grid.cell_width,
@@ -372,23 +335,23 @@ impl Renderer {
             );
 
             let mut current_row = active_tab_rows + active_content_rows;
-            for (i, (left_offset_cells, tab_rows)) in bg_tabs.into_iter().enumerate() {
-                if i >= max_visible_bg || current_row + 2 > main_rows {
+            for (i, (left_offset_cells, row_cells)) in bg_lines.into_iter().enumerate() {
+                if i >= max_visible_bg || current_row >= main_rows {
                     break;
                 }
                 let origin_y = main_rect.y + current_row as f32 * self.grid.cell_height;
                 let origin_x = content_x + left_offset_cells as f32 * self.grid.cell_width;
 
-                if !tab_rows.is_empty() {
+                if !row_cells.is_empty() {
                     regions.push(RenderRegion {
-                        cells: tab_rows,
+                        cells: vec![row_cells],
                         origin_x,
                         origin_y,
                         cell_width: self.grid.cell_width,
                         cell_height: self.grid.cell_height,
                     });
                 }
-                current_row += 2;
+                current_row += 1;
             }
 
             // Overflow indicator: "... +N more"
@@ -421,8 +384,7 @@ impl Renderer {
         // Style:
         //   ▕  (normal rows)
         //      (gap at active sidebar session)
-        //   ┘  (bg card border rows — horizontal line connects here)
-        //   ▕  (bg card content rows)
+        //   ┘  (bg card title rows — horizontal line connects here)
         {
             let divider_x = sidebar_rect.x - self.grid.cell_width;
             if divider_x >= 0.0 {
@@ -430,30 +392,30 @@ impl Renderer {
                 let divider_bg = self.panel_colors.background;
                 let total_rows = self.grid.main_rows() as usize;
 
-                // Sidebar: Row 0 = [+ New], Row 1 = separator, Row 2+ = sessions
-                // Active session is always first (row 2).
                 let has_sessions = !self.side_panel.sessions.is_empty();
                 let active_sidebar_row: Option<usize> = if has_sessions { Some(2) } else { None };
 
-                // Collect bg card border row indices (only visible cards, max 3)
+                // Collect bg card title row indices
                 let bg_start = active_tab_rows + active_content_rows;
-                let mut bg_border_rows = std::collections::HashSet::new();
+                let mut bg_title_rows = std::collections::HashSet::new();
+                // Active card title is also a ─ line at row 0
+                bg_title_rows.insert(0);
                 for i in 0..visible_bg {
-                    let border_row_idx = bg_start + i * 2;
-                    if border_row_idx < total_rows {
-                        bg_border_rows.insert(border_row_idx);
+                    let title_row_idx = bg_start + i;
+                    if title_row_idx < total_rows {
+                        bg_title_rows.insert(title_row_idx);
                     }
                 }
 
-                // Render special rows (gaps, corners) at normal grid spacing
+                // Grid-spaced special chars (gaps, corners)
                 let divider_cells: Vec<Vec<TerminalCell>> = (0..total_rows)
                     .map(|row| {
                         let ch = if Some(row) == active_sidebar_row {
                             ' '
-                        } else if bg_border_rows.contains(&row) {
+                        } else if bg_title_rows.contains(&row) {
                             '\u{2518}' // ┘
                         } else {
-                            ' ' // will be filled by dense line below
+                            ' ' // filled by dense line below
                         };
                         vec![TerminalCell {
                             c: ch,
@@ -473,19 +435,17 @@ impl Renderer {
                     cell_height: self.grid.cell_height,
                 });
 
-                // Dense ▕ fill: render at font-size intervals (no line_height gap)
-                // to create a solid continuous line. Skip special rows.
-                let dense_height = self.text_renderer.font_size; // no line_height
+                // Dense ▕ fill at font-size intervals for solid line
+                let dense_height = self.text_renderer.font_size;
                 let surface_height = self.config.height as f32;
                 let dense_count = (surface_height / dense_height).ceil() as usize;
 
-                // Map dense row index → grid row index for gap/corner detection
                 let mut dense_cells: Vec<Vec<TerminalCell>> = Vec::with_capacity(dense_count);
                 for di in 0..dense_count {
                     let y_pos = di as f32 * dense_height;
                     let grid_row = (y_pos / self.grid.cell_height) as usize;
                     let skip = Some(grid_row) == active_sidebar_row
-                        || bg_border_rows.contains(&grid_row);
+                        || bg_title_rows.contains(&grid_row);
                     let ch = if skip { ' ' } else { '\u{2595}' };
                     dense_cells.push(vec![TerminalCell {
                         c: ch,
@@ -605,19 +565,19 @@ impl Renderer {
 
     /// Calculate the terminal dimensions for the active card content area.
     ///
-    /// Returns `(cols, rows)` accounting for the title bar row and background
-    /// card tab rows at the bottom.
+    /// Returns `(cols, rows)` accounting for the title row and background
+    /// card rows at the bottom.
     pub fn active_card_dimensions(&self) -> (u16, u16) {
-        // Subtract 2 columns: 1 for left border, 1 for right divider
-        let main_cols = self.grid.main_cols().saturating_sub(2);
+        // Subtract 1 column for right divider
+        let main_cols = self.grid.main_cols().saturating_sub(1);
         let main_rows = self.grid.main_rows() as usize;
         let num_bg_cards = self.card_stack.background_cards().len();
         let max_visible_bg = 3;
         let visible_bg = num_bg_cards.min(max_visible_bg);
         let has_overflow = num_bg_cards > max_visible_bg;
         let overflow_rows = if has_overflow { 1 } else { 0 };
-        let active_tab_rows = 2;
-        let bg_tab_rows = (visible_bg * 2 + overflow_rows).min(main_rows.saturating_sub(3));
+        let active_tab_rows = 1;
+        let bg_tab_rows = (visible_bg + overflow_rows).min(main_rows.saturating_sub(2));
         let content_rows = main_rows.saturating_sub(active_tab_rows + bg_tab_rows) as u16;
         (main_cols, content_rows)
     }

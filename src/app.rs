@@ -461,15 +461,15 @@ impl App {
         let visible_bg = num_bg_cards.min(max_visible_bg);
         let has_overflow = num_bg_cards > max_visible_bg;
         let overflow_rows = if has_overflow { 1 } else { 0 };
-        let active_tab_rows = 2;
-        let bg_tab_rows = (visible_bg * 2 + overflow_rows).min(main_rows.saturating_sub(3));
+        let active_tab_rows = 1;
+        let bg_tab_rows = (visible_bg + overflow_rows).min(main_rows.saturating_sub(2));
         let active_content_rows = main_rows.saturating_sub(active_tab_rows + bg_tab_rows);
         let bg_start_row = active_tab_rows + active_content_rows;
-        let bg_card_end = bg_start_row + visible_bg * 2;
+        let bg_card_end = bg_start_row + visible_bg;
 
         if row >= bg_start_row && row < bg_card_end {
-            // Click is on a background card tab (2 rows each).
-            let bg_index = (row - bg_start_row) / 2;
+            // Click is on a background card title line (1 row each).
+            let bg_index = row - bg_start_row;
 
             let session_id = self
                 .renderer
@@ -530,11 +530,11 @@ impl App {
             let visible_bg = num_bg_cards.min(max_visible_bg);
             let has_overflow = num_bg_cards > max_visible_bg;
             let overflow_rows = if has_overflow { 1 } else { 0 };
-            let active_tab_rows = 2;
-            let bg_tab_rows = (visible_bg * 2 + overflow_rows).min(main_rows.saturating_sub(3));
+            let active_tab_rows = 1;
+            let bg_tab_rows = (visible_bg + overflow_rows).min(main_rows.saturating_sub(2));
             let active_content_rows = main_rows.saturating_sub(active_tab_rows + bg_tab_rows);
             let bg_start_row = active_tab_rows + active_content_rows;
-            let bg_card_end = bg_start_row + visible_bg * 2;
+            let bg_card_end = bg_start_row + visible_bg;
             let row = (y / cell_height) as usize;
 
             if row >= bg_start_row && row < bg_card_end {
