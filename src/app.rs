@@ -154,11 +154,12 @@ impl App {
         let master = pty.master();
         let child_pid = pty.child_pid();
 
-        // Derive project name from cwd
-        let project_name = std::env::current_dir()
+        // Derive project name from cwd, with auto-numbering for duplicates
+        let base_name = std::env::current_dir()
             .ok()
             .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
             .unwrap_or_else(|| "shell".to_string());
+        let project_name = self.assign_numbered_name(&base_name);
 
         // Spawn async task to read PTY output and forward to event loop
         let proxy = self.event_proxy.clone();
@@ -238,6 +239,45 @@ impl App {
                 });
             }
         }
+    }
+
+    /// Assign a numbered name if the base name already exists in other sessions.
+    ///
+    /// First occurrence keeps the plain name. When a second session with the same
+    /// directory appears, the first gets " (1)" and the new one gets " (2)".
+    fn assign_numbered_name(&mut self, base_name: &str) -> String {
+        // Count existing sessions with the same base name (ignoring " (N)" suffix)
+        let mut same_base_count = 0;
+        let mut first_unnumbered_id: Option<SessionId> = None;
+
+        for id in &self.session_order {
+            if let Some(pipeline) = self.sessions.get(id) {
+                let existing = &pipeline.project_name;
+                let existing_base = existing
+                    .rfind(" (")
+                    .map(|i| &existing[..i])
+                    .unwrap_or(existing);
+                if existing_base == base_name {
+                    same_base_count += 1;
+                    if !existing.contains(" (") && first_unnumbered_id.is_none() {
+                        first_unnumbered_id = Some(*id);
+                    }
+                }
+            }
+        }
+
+        if same_base_count == 0 {
+            return base_name.to_string();
+        }
+
+        // Rename the first unnumbered session to " (1)"
+        if let Some(first_id) = first_unnumbered_id {
+            if let Some(pipeline) = self.sessions.get_mut(&first_id) {
+                pipeline.project_name = format!("{} (1)", base_name);
+            }
+        }
+
+        format!("{} ({})", base_name, same_base_count + 1)
     }
 
     /// Build side panel entries from current sessions and push to renderer.
