@@ -47,6 +47,8 @@ struct SessionPipeline {
     splitter: StreamSplitter,
     detector: StateDetector,
     project_name: String,
+    child_pid: Option<u32>,
+    last_cwd_check: std::time::Instant,
 }
 
 /// Main application state.
@@ -114,9 +116,10 @@ impl App {
 
         info!(%session_id, "PTY session spawned ({cols}x{rows})");
 
-        // Grab writer and master before moving pty into the reader task
+        // Grab writer, master, and child PID before moving pty into the reader task
         let writer = pty.writer();
         let master = pty.master();
+        let child_pid = pty.child_pid();
 
         // Derive project name from cwd
         let project_name = std::env::current_dir()
@@ -150,6 +153,8 @@ impl App {
             splitter,
             detector,
             project_name,
+            child_pid,
+            last_cwd_check: std::time::Instant::now(),
         };
 
         self.sessions.insert(session_id, pipeline);
@@ -665,16 +670,8 @@ impl ApplicationHandler<AppEvent> for App {
                 tracing::debug!(bytes = data.len(), %session_id, "PTY output received");
 
                 if let Some(pipeline) = self.sessions.get_mut(&session_id) {
-                    // Detect OSC 7 (cwd change) in PTY output
-                    let text = String::from_utf8_lossy(&data);
-                    if let Some(cwd) = extract_osc7_cwd(&text) {
-                        if let Some(dir_name) = std::path::Path::new(&cwd)
-                            .file_name()
-                            .map(|n| n.to_string_lossy().to_string())
-                        {
-                            pipeline.project_name = dir_name;
-                        }
-                    }
+                    // Update session name from child cwd (throttled to once per second)
+                    update_session_name_from_cwd(pipeline);
 
                     // Feed to terminal emulator
                     pipeline.terminal.feed(&data);
@@ -867,10 +864,31 @@ mod tests {
     }
 }
 
+/// Update session name from child process cwd (throttled to once per second).
+fn update_session_name_from_cwd(pipeline: &mut SessionPipeline) {
+    // Throttle: only check once per second
+    if pipeline.last_cwd_check.elapsed() < std::time::Duration::from_secs(1) {
+        return;
+    }
+    pipeline.last_cwd_check = std::time::Instant::now();
+
+    #[cfg(target_os = "macos")]
+    if let Some(pid) = pipeline.child_pid {
+        if let Some(cwd) = crate::session::pty::child_cwd(pid as i32) {
+            if let Some(dir_name) = cwd.file_name().map(|n| n.to_string_lossy().to_string()) {
+                if pipeline.project_name != dir_name {
+                    pipeline.project_name = dir_name;
+                }
+            }
+        }
+    }
+}
+
 /// Extract the working directory path from an OSC 7 escape sequence.
 ///
 /// Format: `ESC ] 7 ; file://hostname/path ST`
 /// where ST is `ESC \` or `BEL (\x07)`.
+#[allow(dead_code)]
 fn extract_osc7_cwd(text: &str) -> Option<String> {
     // Look for OSC 7 pattern: \x1b]7;file://...path... followed by \x1b\\ or \x07
     let marker = "\x1b]7;";

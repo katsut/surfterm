@@ -44,6 +44,7 @@ pub struct PtyHandle {
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
     output_rx: mpsc::Receiver<Vec<u8>>,
     child_exited: Arc<Notify>,
+    child_pid: Option<u32>,
     _reader_task: std::thread::JoinHandle<()>,
     _child_task: std::thread::JoinHandle<()>,
 }
@@ -73,11 +74,15 @@ impl PtyHandle {
 
         let mut cmd = CommandBuilder::new(&shell);
         cmd.cwd(std::env::current_dir().unwrap_or_else(|_| "/".into()));
+        // Set TERM_PROGRAM so shells (zsh, bash, fish) emit OSC 7 for cwd tracking
+        cmd.env("TERM_PROGRAM", "surfterm");
 
         let mut child = pair
             .slave
             .spawn_command(cmd)
             .map_err(PtyError::Spawn)?;
+
+        let child_pid = child.process_id();
 
         // Drop the slave side; the master keeps the PTY alive.
         drop(pair.slave);
@@ -130,6 +135,7 @@ impl PtyHandle {
             writer: Arc::new(Mutex::new(writer)),
             output_rx,
             child_exited,
+            child_pid,
             _reader_task: reader_task,
             _child_task: child_task,
         })
@@ -174,6 +180,18 @@ impl PtyHandle {
         })
         .await
         .expect("blocking resize task panicked")
+    }
+
+    /// Get the child process PID, if available.
+    pub fn child_pid(&self) -> Option<u32> {
+        self.child_pid
+    }
+
+    /// Get the current working directory of the child process (macOS).
+    #[cfg(target_os = "macos")]
+    pub fn get_child_cwd(&self) -> Option<std::path::PathBuf> {
+        let pid = self.child_pid? as i32;
+        child_cwd(pid)
     }
 
     /// Get a clone of the writer Arc for shared write access.
@@ -276,5 +294,55 @@ mod tests {
             .await
             .expect("write exit");
         while handle.read_output().await.is_some() {}
+    }
+}
+
+/// Get the current working directory of a process by PID (macOS only).
+#[cfg(target_os = "macos")]
+pub fn child_cwd(pid: i32) -> Option<std::path::PathBuf> {
+    use std::ffi::CStr;
+    use std::os::raw::c_char;
+    use std::path::PathBuf;
+
+    extern "C" {
+        fn proc_pidinfo(
+            pid: i32,
+            flavor: i32,
+            arg: u64,
+            buffer: *mut u8,
+            buffersize: i32,
+        ) -> i32;
+    }
+
+    // PROC_PIDVNODEPATHINFO = 9
+    const PROC_PIDVNODEPATHINFO: i32 = 9;
+    // struct vnode_info_path has a fixed layout; the cwd path starts at offset 152
+    // Total struct size is 2352 bytes
+    const VNODE_INFO_PATH_SIZE: usize = 2352;
+    const CWD_PATH_OFFSET: usize = 152;
+
+    let mut buf = vec![0u8; VNODE_INFO_PATH_SIZE];
+    let ret = unsafe {
+        proc_pidinfo(
+            pid,
+            PROC_PIDVNODEPATHINFO,
+            0,
+            buf.as_mut_ptr(),
+            VNODE_INFO_PATH_SIZE as i32,
+        )
+    };
+
+    if ret <= 0 {
+        return None;
+    }
+
+    let cwd_bytes = &buf[CWD_PATH_OFFSET..];
+    let cwd_cstr = unsafe { CStr::from_ptr(cwd_bytes.as_ptr() as *const c_char) };
+    let path = PathBuf::from(cwd_cstr.to_string_lossy().to_string());
+
+    if path.as_os_str().is_empty() {
+        None
+    } else {
+        Some(path)
     }
 }
