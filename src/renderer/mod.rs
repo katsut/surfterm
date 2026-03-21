@@ -13,7 +13,7 @@ use crate::session::state::SessionState;
 use crate::session::terminal::TerminalContent;
 
 use self::grid::GridLayout;
-use self::panel::{DisplayMode, MessagePanel, StatePanel};
+use self::panel::{DisplayMode, MessagePanel, SidePanel, SidePanelEntry, StatePanel};
 use self::text::TextRenderer;
 
 /// Default font size in logical pixels for terminal cell rendering.
@@ -34,6 +34,7 @@ pub struct Renderer {
     pub display_mode: DisplayMode,
     pub message_panel: MessagePanel,
     pub state_panel: StatePanel,
+    pub side_panel: SidePanel,
     scale_factor: f32,
 }
 
@@ -93,15 +94,21 @@ impl Renderer {
         surface.configure(&device, &config);
 
         let physical_font_size = DEFAULT_FONT_SIZE * scale_factor;
-        let grid = GridLayout::new(size.width.max(1), size.height.max(1), physical_font_size);
+        let grid = GridLayout::with_scale_factor(
+            size.width.max(1),
+            size.height.max(1),
+            physical_font_size,
+            scale_factor,
+        );
         let mut text_renderer = TextRenderer::new(&device, &queue, surface_format);
         text_renderer.font_size = physical_font_size;
 
         tracing::info!(
             width = size.width,
             height = size.height,
-            cols = grid.cols,
-            rows = grid.rows,
+            cols = grid.main_cols(),
+            rows = grid.main_rows(),
+            sidebar_cols = grid.sidebar_cols(),
             format = ?surface_format,
             "wgpu renderer initialized"
         );
@@ -117,6 +124,7 @@ impl Renderer {
             display_mode: DisplayMode::Raw,
             message_panel: MessagePanel::new(),
             state_panel: StatePanel::new(),
+            side_panel: SidePanel::new(),
             scale_factor,
         })
     }
@@ -130,12 +138,17 @@ impl Renderer {
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
             let physical_font_size = DEFAULT_FONT_SIZE * self.scale_factor;
-            self.grid = GridLayout::new(new_size.width, new_size.height, physical_font_size);
+            self.grid = GridLayout::with_scale_factor(
+                new_size.width,
+                new_size.height,
+                physical_font_size,
+                self.scale_factor,
+            );
             tracing::debug!(
                 width = new_size.width,
                 height = new_size.height,
-                cols = self.grid.cols,
-                rows = self.grid.rows,
+                main_cols = self.grid.main_cols(),
+                main_rows = self.grid.main_rows(),
                 "Surface and grid resized"
             );
         }
@@ -195,9 +208,8 @@ impl Renderer {
         Ok(())
     }
 
-    /// Render terminal content. In Raw mode, renders the full terminal across
-    /// the entire window. In Panels mode, renders message panel left and state
-    /// panel right.
+    /// Render terminal content with the side panel on the left and terminal
+    /// content in the main area on the right.
     #[instrument(skip(self, content))]
     pub fn render_content(&mut self, content: &TerminalContent) -> Result<()> {
         let output = self.acquire_surface_texture()?;
@@ -213,9 +225,58 @@ impl Renderer {
             });
 
         let surface_size = (self.config.width, self.config.height);
+        let sidebar_rect = self.grid.sidebar_rect();
+        let main_rect = self.grid.main_rect();
 
-        // Prepare text content before creating the render pass.
-        // glyphon's prepare() must be called before the render pass.
+        // Prepare sidebar cells
+        let sidebar_cols = self.grid.sidebar_cols();
+        let sidebar_rows = self.grid.rows;
+        let sidebar_cells =
+            self.side_panel
+                .to_terminal_cells(sidebar_cols, sidebar_rows, self.scale_factor);
+
+        // Combine sidebar and main terminal cells into one prepare call.
+        // We build a merged cell grid: sidebar cells on the left, terminal cells on the right.
+        let main_cols = self.grid.main_cols() as usize;
+        let total_visual_cols = sidebar_cols as usize + main_cols;
+        let total_rows = self.grid.rows as usize;
+
+        let mut merged_rows: Vec<Vec<crate::session::terminal::TerminalCell>> =
+            Vec::with_capacity(total_rows);
+
+        for row_idx in 0..total_rows {
+            let mut row = Vec::with_capacity(total_visual_cols);
+
+            // Sidebar portion
+            if row_idx < sidebar_cells.len() {
+                row.extend_from_slice(&sidebar_cells[row_idx]);
+            } else {
+                // Pad with empty cells
+                for _ in 0..sidebar_cols as usize {
+                    row.push(crate::session::terminal::TerminalCell::default());
+                }
+            }
+
+            // Terminal (main area) portion
+            if row_idx < content.rows.len() {
+                let term_row = &content.rows[row_idx];
+                for col_idx in 0..main_cols {
+                    if col_idx < term_row.len() {
+                        row.push(term_row[col_idx].clone());
+                    } else {
+                        row.push(crate::session::terminal::TerminalCell::default());
+                    }
+                }
+            } else {
+                for _ in 0..main_cols {
+                    row.push(crate::session::terminal::TerminalCell::default());
+                }
+            }
+
+            merged_rows.push(row);
+        }
+
+        // Prepare the merged content.
         let clip = TextBounds {
             left: 0,
             top: 0,
@@ -223,33 +284,19 @@ impl Renderer {
             bottom: self.config.height as i32,
         };
 
-        match self.display_mode {
-            DisplayMode::Raw => {
-                self.text_renderer.render_cells_prepare(
-                    &self.device,
-                    &self.queue,
-                    &self.grid,
-                    &content.rows,
-                    surface_size,
-                    0.0,
-                    0.0,
-                    Some(clip),
-                )?;
-            }
-            DisplayMode::Panels => {
-                // For now, render terminal content in full window (same as Raw)
-                self.text_renderer.render_cells_prepare(
-                    &self.device,
-                    &self.queue,
-                    &self.grid,
-                    &content.rows,
-                    surface_size,
-                    0.0,
-                    0.0,
-                    Some(clip),
-                )?;
-            }
-        }
+        // Use sidebar_rect.x=0 as offset since the merged grid starts at 0.
+        let _ = sidebar_rect;
+        let _ = main_rect;
+        self.text_renderer.render_cells_prepare(
+            &self.device,
+            &self.queue,
+            &self.grid,
+            &merged_rows,
+            surface_size,
+            0.0,
+            0.0,
+            Some(clip),
+        )?;
 
         // Single render pass: clear + text
         {
@@ -306,6 +353,12 @@ impl Renderer {
     #[allow(dead_code)]
     pub fn push_state_line(&mut self, line: String) {
         self.state_panel.push_state_line(line);
+    }
+
+    /// Update the side panel with new session entries.
+    #[allow(dead_code)]
+    pub fn update_side_panel(&mut self, entries: Vec<SidePanelEntry>) {
+        self.side_panel.update_sessions(entries);
     }
 }
 

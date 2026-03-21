@@ -20,6 +20,14 @@ pub enum SurftermCmd {
     Quit,
     SwitchToNormal,
     SwitchToInsert,
+    /// Move side panel selection down.
+    SidePanelDown,
+    /// Move side panel selection up.
+    SidePanelUp,
+    /// Activate selected side panel entry (switch session or create new).
+    SidePanelEnter,
+    /// Kill the selected session.
+    SidePanelKill,
 }
 
 /// The result of processing a key event.
@@ -110,8 +118,14 @@ impl InputHandler {
                 }
                 "r" => InputAction::SurftermCommand(SurftermCmd::ToggleRawView),
                 "q" => InputAction::SurftermCommand(SurftermCmd::Quit),
+                "j" => InputAction::SurftermCommand(SurftermCmd::SidePanelDown),
+                "k" => InputAction::SurftermCommand(SurftermCmd::SidePanelUp),
+                "x" => InputAction::SurftermCommand(SurftermCmd::SidePanelKill),
                 _ => InputAction::None,
             },
+            Key::Named(NamedKey::Enter) => {
+                InputAction::SurftermCommand(SurftermCmd::SidePanelEnter)
+            }
             _ => InputAction::None,
         }
     }
@@ -282,7 +296,7 @@ mod tests {
     fn unknown_key_in_normal_mode_is_ignored() {
         let mut handler = InputHandler::new();
         handler.process_key(&named_key(NamedKey::Escape));
-        let action = handler.process_key(&char_key("x"));
+        let action = handler.process_key(&char_key("z"));
         assert_eq!(action, InputAction::None);
     }
 
@@ -482,6 +496,52 @@ mod tests {
 
         let action = handler.process_key(&char_key("5"));
         assert_eq!(action, InputAction::None);
+    }
+
+    // --- Side panel navigation tests ---
+
+    #[test]
+    fn j_in_normal_mode_sends_side_panel_down() {
+        let mut handler = InputHandler::new();
+        handler.process_key(&named_key(NamedKey::Escape));
+        let action = handler.process_key(&char_key("j"));
+        assert_eq!(
+            action,
+            InputAction::SurftermCommand(SurftermCmd::SidePanelDown)
+        );
+    }
+
+    #[test]
+    fn k_in_normal_mode_sends_side_panel_up() {
+        let mut handler = InputHandler::new();
+        handler.process_key(&named_key(NamedKey::Escape));
+        let action = handler.process_key(&char_key("k"));
+        assert_eq!(
+            action,
+            InputAction::SurftermCommand(SurftermCmd::SidePanelUp)
+        );
+    }
+
+    #[test]
+    fn enter_in_normal_mode_sends_side_panel_enter() {
+        let mut handler = InputHandler::new();
+        handler.process_key(&named_key(NamedKey::Escape));
+        let action = handler.process_key(&named_key(NamedKey::Enter));
+        assert_eq!(
+            action,
+            InputAction::SurftermCommand(SurftermCmd::SidePanelEnter)
+        );
+    }
+
+    #[test]
+    fn x_in_normal_mode_sends_side_panel_kill() {
+        let mut handler = InputHandler::new();
+        handler.process_key(&named_key(NamedKey::Escape));
+        let action = handler.process_key(&char_key("x"));
+        assert_eq!(
+            action,
+            InputAction::SurftermCommand(SurftermCmd::SidePanelKill)
+        );
     }
 
     #[test]

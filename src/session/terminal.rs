@@ -37,6 +37,19 @@ pub struct TerminalCell {
     pub underline: bool,
 }
 
+impl Default for TerminalCell {
+    fn default() -> Self {
+        Self {
+            c: ' ',
+            fg: Rgb::new(0xcd, 0xd6, 0xf4), // Catppuccin text
+            bg: Rgb::new(0x1e, 0x1e, 0x2e),  // Catppuccin base
+            bold: false,
+            italic: false,
+            underline: false,
+        }
+    }
+}
+
 /// Snapshot of visible terminal content.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]

@@ -12,6 +12,9 @@ pub struct Rect {
     pub height: f32,
 }
 
+/// Logical sidebar width in pixels (before scale factor).
+const SIDEBAR_LOGICAL_WIDTH: f32 = 200.0;
+
 /// Grid layout that maps terminal cells onto the pixel surface and splits the
 /// screen into left (message) and right (state) panels.
 #[derive(Debug, Clone)]
@@ -21,7 +24,7 @@ pub struct GridLayout {
     pub cell_width: f32,
     /// Height of a single monospace cell in pixels (includes line spacing).
     pub cell_height: f32,
-    /// Number of columns that fit the surface.
+    /// Number of columns that fit the surface (full surface).
     pub cols: u16,
     /// Number of rows that fit the surface.
     pub rows: u16,
@@ -31,6 +34,8 @@ pub struct GridLayout {
     surface_width: f32,
     /// Total surface height in pixels.
     surface_height: f32,
+    /// Fixed sidebar width in physical pixels.
+    pub sidebar_width: f32,
 }
 
 /// The ratio between cell height and font size (line height factor).
@@ -49,13 +54,31 @@ impl GridLayout {
     ///
     /// Cell dimensions are derived from the font metrics of a typical monospace
     /// font. Columns and rows are calculated to fill the surface.
+    /// Create a new grid layout from the surface dimensions, font size, and scale factor.
+    ///
+    /// Cell dimensions are derived from the font metrics of a typical monospace
+    /// font. Columns and rows are calculated to fill the surface.
+    /// The `scale_factor` is used to compute the sidebar width in physical pixels.
     #[instrument(skip_all, fields(surface_width, surface_height, font_size))]
     pub fn new(surface_width: u32, surface_height: u32, font_size: f32) -> Self {
+        Self::with_scale_factor(surface_width, surface_height, font_size, 1.0)
+    }
+
+    /// Create a new grid layout with an explicit scale factor for sidebar width calculation.
+    #[instrument(skip_all, fields(surface_width, surface_height, font_size, scale_factor))]
+    pub fn with_scale_factor(
+        surface_width: u32,
+        surface_height: u32,
+        font_size: f32,
+        scale_factor: f32,
+    ) -> Self {
         let cell_width = (font_size * CELL_WIDTH_FACTOR).ceil();
         let cell_height = (font_size * LINE_HEIGHT_FACTOR).ceil();
 
         let sw = surface_width as f32;
         let sh = surface_height as f32;
+
+        let sidebar_width = (SIDEBAR_LOGICAL_WIDTH * scale_factor).floor();
 
         let cols = if cell_width > 0.0 {
             (sw / cell_width).floor() as u16
@@ -76,6 +99,52 @@ impl GridLayout {
             left_panel_ratio: 0.7,
             surface_width: sw,
             surface_height: sh,
+            sidebar_width,
+        }
+    }
+
+    /// Returns the pixel rectangle for the left sidebar area.
+    #[instrument(skip(self))]
+    pub fn sidebar_rect(&self) -> Rect {
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            width: self.sidebar_width,
+            height: self.surface_height,
+        }
+    }
+
+    /// Returns the pixel rectangle for the main terminal area (right of sidebar).
+    #[instrument(skip(self))]
+    pub fn main_rect(&self) -> Rect {
+        Rect {
+            x: self.sidebar_width,
+            y: 0.0,
+            width: (self.surface_width - self.sidebar_width).max(0.0),
+            height: self.surface_height,
+        }
+    }
+
+    /// Returns the number of columns that fit within the main area (right of sidebar).
+    pub fn main_cols(&self) -> u16 {
+        if self.cell_width > 0.0 {
+            (self.main_rect().width / self.cell_width).floor() as u16
+        } else {
+            0
+        }
+    }
+
+    /// Returns the number of rows that fit within the main area.
+    pub fn main_rows(&self) -> u16 {
+        self.rows
+    }
+
+    /// Returns the number of columns that fit within the sidebar.
+    pub fn sidebar_cols(&self) -> u16 {
+        if self.cell_width > 0.0 {
+            (self.sidebar_width / self.cell_width).floor() as u16
+        } else {
+            0
         }
     }
 
@@ -196,5 +265,57 @@ mod tests {
         // The sum should be close to total cols (some pixels may be lost to rounding)
         assert!(left_cols + right_cols <= grid.cols + 1);
         assert!(left_cols > right_cols); // 70:30 ratio
+    }
+
+    // ── Sidebar tests ──
+
+    #[test]
+    fn sidebar_rect_uses_scale_factor() {
+        let grid = GridLayout::with_scale_factor(1280, 800, 16.0, 2.0);
+        let sidebar = grid.sidebar_rect();
+        // sidebar_width = floor(200.0 * 2.0) = 400
+        assert_eq!(sidebar.x, 0.0);
+        assert_eq!(sidebar.y, 0.0);
+        assert_eq!(sidebar.width, 400.0);
+        assert_eq!(sidebar.height, 800.0);
+    }
+
+    #[test]
+    fn main_rect_starts_after_sidebar() {
+        let grid = GridLayout::with_scale_factor(1280, 800, 16.0, 2.0);
+        let main = grid.main_rect();
+        assert_eq!(main.x, 400.0);
+        assert_eq!(main.y, 0.0);
+        assert_eq!(main.width, 880.0);
+        assert_eq!(main.height, 800.0);
+    }
+
+    #[test]
+    fn main_cols_calculated_from_main_area() {
+        let grid = GridLayout::with_scale_factor(1280, 800, 16.0, 2.0);
+        // cell_width = 10, main_width = 880
+        // main_cols = floor(880 / 10) = 88
+        assert_eq!(grid.main_cols(), 88);
+    }
+
+    #[test]
+    fn main_rows_equals_total_rows() {
+        let grid = GridLayout::with_scale_factor(1280, 800, 16.0, 2.0);
+        assert_eq!(grid.main_rows(), grid.rows);
+    }
+
+    #[test]
+    fn sidebar_cols_calculated_correctly() {
+        let grid = GridLayout::with_scale_factor(1280, 800, 16.0, 2.0);
+        // sidebar_width = 400, cell_width = 10
+        // sidebar_cols = floor(400 / 10) = 40
+        assert_eq!(grid.sidebar_cols(), 40);
+    }
+
+    #[test]
+    fn default_scale_factor_gives_200px_sidebar() {
+        let grid = GridLayout::new(1280, 800, 16.0);
+        // default scale_factor = 1.0, sidebar_width = floor(200 * 1.0) = 200
+        assert_eq!(grid.sidebar_width, 200.0);
     }
 }

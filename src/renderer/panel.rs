@@ -44,10 +44,233 @@ const STATE_INFO_FG: Rgb = Rgb::new(0xcd, 0xd6, 0xf4);
 /// Dim state lines: (#a6adc8, Catppuccin subtext0).
 const STATE_DIM_FG: Rgb = Rgb::new(0xa6, 0xad, 0xc8);
 
+// ── Side Panel colors ──
+
+/// New session button color: green (#a6e3a1, Catppuccin green).
+const SIDE_NEW_SESSION_FG: Rgb = Rgb::new(0xa6, 0xe3, 0xa1);
+
+/// Separator dim color for side panel (#585b70, Catppuccin surface2).
+const SIDE_SEPARATOR_FG: Rgb = Rgb::new(0x58, 0x5b, 0x70);
+
+/// Active session background (#45475a, Catppuccin surface1).
+const SIDE_ACTIVE_BG: Rgb = Rgb::new(0x45, 0x47, 0x5a);
+
+/// Selected (focused) session background (#585b70, Catppuccin surface2).
+const SIDE_SELECTED_BG: Rgb = Rgb::new(0x58, 0x5b, 0x70);
+
+/// State dot color: Running = yellow (#f9e2af).
+const SIDE_DOT_RUNNING: Rgb = Rgb::new(0xf9, 0xe2, 0xaf);
+
+/// State dot color: WaitingForInput = green (#a6e3a1).
+const SIDE_DOT_WAITING: Rgb = Rgb::new(0xa6, 0xe3, 0xa1);
+
+/// State dot color: Error = red (#f38ba8).
+const SIDE_DOT_ERROR: Rgb = Rgb::new(0xf3, 0x8b, 0xa8);
+
+/// State dot color: Idle = gray (#6c7086).
+const SIDE_DOT_IDLE: Rgb = Rgb::new(0x6c, 0x70, 0x86);
+
+/// Normal text in side panel (#cdd6f4, Catppuccin text).
+const SIDE_TEXT_FG: Rgb = Rgb::new(0xcd, 0xd6, 0xf4);
+
 // ── Session List colors ──
 
 /// Selected entry background (#45475a, Catppuccin surface1).
 const SESSION_SELECTED_BG: Rgb = Rgb::new(0x45, 0x47, 0x5a);
+
+/// A single entry in the side panel session list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
+pub struct SidePanelEntry {
+    pub id: SessionId,
+    pub name: String,
+    pub state: SessionState,
+    pub is_active: bool,
+}
+
+/// Side panel showing sessions with a "New Session" button at the top.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct SidePanel {
+    pub sessions: Vec<SidePanelEntry>,
+    pub selected_index: usize,
+    /// When true, the "+ New Session" button row is selected (index 0 in the navigation).
+    pub new_session_highlighted: bool,
+}
+
+impl Default for SidePanel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[allow(dead_code)]
+impl SidePanel {
+    /// Create a new empty side panel.
+    pub fn new() -> Self {
+        Self {
+            sessions: Vec::new(),
+            selected_index: 0,
+            new_session_highlighted: true,
+        }
+    }
+
+    /// Update the session list.
+    pub fn update_sessions(&mut self, entries: Vec<SidePanelEntry>) {
+        self.sessions = entries;
+        // Clamp selected_index: 0 = new session button, 1..=len = session entries
+        let max_index = self.sessions.len();
+        if self.selected_index > max_index {
+            self.selected_index = max_index;
+        }
+        self.new_session_highlighted = self.selected_index == 0;
+    }
+
+    /// Move selection down.
+    pub fn select_next(&mut self) {
+        let max_index = self.sessions.len(); // 0 = new button, 1..=len = sessions
+        if self.selected_index < max_index {
+            self.selected_index += 1;
+        }
+        self.new_session_highlighted = self.selected_index == 0;
+    }
+
+    /// Move selection up.
+    pub fn select_prev(&mut self) {
+        self.selected_index = self.selected_index.saturating_sub(1);
+        self.new_session_highlighted = self.selected_index == 0;
+    }
+
+    /// Get the currently selected session entry (None if new-session button is selected or list empty).
+    pub fn selected_entry(&self) -> Option<&SidePanelEntry> {
+        if self.selected_index == 0 {
+            None
+        } else {
+            self.sessions.get(self.selected_index - 1)
+        }
+    }
+
+    /// True when the "+ New Session" button is selected (index 0).
+    pub fn is_new_session_selected(&self) -> bool {
+        self.selected_index == 0
+    }
+
+    /// Render the side panel as terminal cells.
+    ///
+    /// Layout:
+    /// - Row 0: "[+ New Session]" in green, highlighted if selected
+    /// - Row 1: "─────────" separator in dim
+    /// - Row 2+: Each session entry with state dot and project name
+    pub fn to_terminal_cells(&self, cols: u16, rows: u16, _scale_factor: f32) -> Vec<Vec<TerminalCell>> {
+        if cols == 0 || rows == 0 {
+            return Vec::new();
+        }
+
+        let cols = cols as usize;
+        let rows = rows as usize;
+        let mut result: Vec<Vec<TerminalCell>> = Vec::with_capacity(rows);
+
+        // Row 0: "+ New Session" button
+        {
+            let text = "[+ New Session]";
+            let bg = if self.selected_index == 0 {
+                SIDE_SELECTED_BG
+            } else {
+                DEFAULT_BG
+            };
+            let mut row = Vec::with_capacity(cols);
+            for ch in text.chars().take(cols) {
+                row.push(TerminalCell {
+                    c: ch,
+                    fg: SIDE_NEW_SESSION_FG,
+                    bg,
+                    bold: self.selected_index == 0,
+                    italic: false,
+                    underline: false,
+                });
+            }
+            while row.len() < cols {
+                row.push(TerminalCell {
+                    c: ' ',
+                    fg: SIDE_NEW_SESSION_FG,
+                    bg,
+                    bold: false,
+                    italic: false,
+                    underline: false,
+                });
+            }
+            result.push(row);
+        }
+
+        // Row 1: separator
+        if result.len() < rows {
+            let sep: String = "\u{2500}".repeat(cols);
+            result.push(make_row(&sep, cols, SIDE_SEPARATOR_FG));
+        }
+
+        // Row 2+: session entries
+        for (i, entry) in self.sessions.iter().enumerate() {
+            if result.len() >= rows {
+                break;
+            }
+
+            let nav_index = i + 1; // 0 = new session button, so sessions start at 1
+            let is_selected = self.selected_index == nav_index;
+
+            let dot_fg = match entry.state {
+                SessionState::Running => SIDE_DOT_RUNNING,
+                SessionState::WaitingForInput => SIDE_DOT_WAITING,
+                SessionState::Error => SIDE_DOT_ERROR,
+                SessionState::Idle => SIDE_DOT_IDLE,
+            };
+
+            let bg = if is_selected {
+                SIDE_SELECTED_BG
+            } else if entry.is_active {
+                SIDE_ACTIVE_BG
+            } else {
+                DEFAULT_BG
+            };
+
+            // Build: "● name" (truncated to cols)
+            let dot = "\u{25cf}";
+            let name_max = cols.saturating_sub(2); // "● " = 2 chars
+            let truncated_name: String = entry.name.chars().take(name_max).collect();
+            let text = format!("{} {}", dot, truncated_name);
+
+            let mut row = Vec::with_capacity(cols);
+            for (ci, ch) in text.chars().enumerate() {
+                let fg = if ci == 0 { dot_fg } else { SIDE_TEXT_FG };
+                row.push(TerminalCell {
+                    c: ch,
+                    fg,
+                    bg,
+                    bold: is_selected,
+                    italic: false,
+                    underline: false,
+                });
+            }
+            while row.len() < cols {
+                row.push(TerminalCell {
+                    c: ' ',
+                    fg: SIDE_TEXT_FG,
+                    bg,
+                    bold: false,
+                    italic: false,
+                    underline: false,
+                });
+            }
+            result.push(row);
+        }
+
+        // Pad remaining rows
+        while result.len() < rows {
+            result.push(make_row("", cols, SIDE_SEPARATOR_FG));
+        }
+
+        result
+    }
+}
 
 /// A single entry in the session list panel.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1061,5 +1284,167 @@ mod tests {
         assert_eq!(list.selected_index, 0);
         list.select_prev();
         assert_eq!(list.selected_index, 0);
+    }
+
+    // ── SidePanel tests ──
+
+    fn make_side_entry(name: &str, state: SessionState, is_active: bool) -> SidePanelEntry {
+        SidePanelEntry {
+            id: SessionId::new(),
+            name: name.to_string(),
+            state,
+            is_active,
+        }
+    }
+
+    #[test]
+    fn side_panel_new_session_at_top() {
+        let mut panel = SidePanel::new();
+        panel.update_sessions(vec![
+            make_side_entry("project-a", SessionState::Running, true),
+        ]);
+
+        let cells = panel.to_terminal_cells(20, 10, 1.0);
+        let row0_text: String = cells[0].iter().map(|c| c.c).collect::<String>();
+        assert!(
+            row0_text.contains("+ New Session"),
+            "Expected new session button at row 0, got: '{}'",
+            row0_text.trim()
+        );
+    }
+
+    #[test]
+    fn side_panel_separator_at_row_1() {
+        let panel = SidePanel::new();
+        let cells = panel.to_terminal_cells(10, 5, 1.0);
+        let row1_text: String = cells[1].iter().map(|c| c.c).collect::<String>();
+        assert!(
+            row1_text.contains('\u{2500}'),
+            "Expected separator at row 1, got: '{}'",
+            row1_text
+        );
+    }
+
+    #[test]
+    fn side_panel_session_entries_at_row_2_plus() {
+        let mut panel = SidePanel::new();
+        panel.update_sessions(vec![
+            make_side_entry("alpha", SessionState::Running, true),
+            make_side_entry("beta", SessionState::Idle, false),
+        ]);
+
+        let cells = panel.to_terminal_cells(20, 10, 1.0);
+        // Row 2 should have the first session
+        let row2_text: String = cells[2].iter().map(|c| c.c).collect::<String>();
+        assert!(row2_text.contains("alpha"), "Expected 'alpha', got: '{}'", row2_text.trim());
+        // Row 3 should have the second session
+        let row3_text: String = cells[3].iter().map(|c| c.c).collect::<String>();
+        assert!(row3_text.contains("beta"), "Expected 'beta', got: '{}'", row3_text.trim());
+    }
+
+    #[test]
+    fn side_panel_navigation() {
+        let mut panel = SidePanel::new();
+        panel.update_sessions(vec![
+            make_side_entry("a", SessionState::Idle, true),
+            make_side_entry("b", SessionState::Idle, false),
+        ]);
+
+        // Initially at 0 (new session button)
+        assert!(panel.is_new_session_selected());
+        assert!(panel.selected_entry().is_none());
+
+        // Move down to first session
+        panel.select_next();
+        assert!(!panel.is_new_session_selected());
+        assert_eq!(panel.selected_entry().unwrap().name, "a");
+
+        // Move down to second session
+        panel.select_next();
+        assert_eq!(panel.selected_entry().unwrap().name, "b");
+
+        // Clamp at bottom
+        panel.select_next();
+        assert_eq!(panel.selected_entry().unwrap().name, "b");
+
+        // Move back up
+        panel.select_prev();
+        assert_eq!(panel.selected_entry().unwrap().name, "a");
+
+        panel.select_prev();
+        assert!(panel.is_new_session_selected());
+
+        // Clamp at top
+        panel.select_prev();
+        assert!(panel.is_new_session_selected());
+    }
+
+    #[test]
+    fn side_panel_state_dot_colors() {
+        let mut panel = SidePanel::new();
+        panel.update_sessions(vec![
+            make_side_entry("running", SessionState::Running, false),
+            make_side_entry("waiting", SessionState::WaitingForInput, false),
+            make_side_entry("error", SessionState::Error, false),
+            make_side_entry("idle", SessionState::Idle, false),
+        ]);
+
+        let cells = panel.to_terminal_cells(20, 10, 1.0);
+        // Row 2: Running dot = yellow
+        assert_eq!(cells[2][0].fg, SIDE_DOT_RUNNING);
+        // Row 3: WaitingForInput dot = green
+        assert_eq!(cells[3][0].fg, SIDE_DOT_WAITING);
+        // Row 4: Error dot = red
+        assert_eq!(cells[4][0].fg, SIDE_DOT_ERROR);
+        // Row 5: Idle dot = gray
+        assert_eq!(cells[5][0].fg, SIDE_DOT_IDLE);
+    }
+
+    #[test]
+    fn side_panel_active_session_highlighted_bg() {
+        let mut panel = SidePanel::new();
+        panel.update_sessions(vec![
+            make_side_entry("active", SessionState::Idle, true),
+            make_side_entry("inactive", SessionState::Idle, false),
+        ]);
+        // Move selection away from both sessions (stay at new-session button)
+        panel.selected_index = 0;
+
+        let cells = panel.to_terminal_cells(20, 10, 1.0);
+        // Row 2: active session should have SIDE_ACTIVE_BG
+        assert_eq!(cells[2][0].bg, SIDE_ACTIVE_BG);
+        // Row 3: inactive session should have DEFAULT_BG
+        assert_eq!(cells[3][0].bg, DEFAULT_BG);
+    }
+
+    #[test]
+    fn side_panel_selected_overrides_active_bg() {
+        let mut panel = SidePanel::new();
+        panel.update_sessions(vec![
+            make_side_entry("active", SessionState::Idle, true),
+        ]);
+        // Select the session (index 1)
+        panel.selected_index = 1;
+
+        let cells = panel.to_terminal_cells(20, 10, 1.0);
+        // Selected should use SIDE_SELECTED_BG, not SIDE_ACTIVE_BG
+        assert_eq!(cells[2][0].bg, SIDE_SELECTED_BG);
+    }
+
+    #[test]
+    fn side_panel_zero_dimensions() {
+        let panel = SidePanel::new();
+        let cells = panel.to_terminal_cells(0, 0, 1.0);
+        assert!(cells.is_empty());
+    }
+
+    #[test]
+    fn side_panel_empty_sessions() {
+        let panel = SidePanel::new();
+        let cells = panel.to_terminal_cells(20, 5, 1.0);
+        assert_eq!(cells.len(), 5);
+        // Row 0: new session button
+        let row0_text: String = cells[0].iter().map(|c| c.c).collect::<String>();
+        assert!(row0_text.contains("+ New Session"));
     }
 }
