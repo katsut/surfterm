@@ -74,8 +74,14 @@ impl PtyHandle {
 
         let mut cmd = CommandBuilder::new(&shell);
         cmd.cwd(std::env::current_dir().unwrap_or_else(|_| "/".into()));
-        // Set TERM_PROGRAM so shells (zsh, bash, fish) emit OSC 7 for cwd tracking
         cmd.env("TERM_PROGRAM", "surfterm");
+        // Ensure UTF-8 locale so shells and tools handle multibyte characters
+        if std::env::var("LANG").is_err() {
+            cmd.env("LANG", "en_US.UTF-8");
+        }
+        if std::env::var("LC_ALL").is_err() {
+            cmd.env("LC_CTYPE", "UTF-8");
+        }
 
         let mut child = pair
             .slave
