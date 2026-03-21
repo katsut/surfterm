@@ -40,6 +40,7 @@ pub struct Renderer {
     pub theme: SurftermTheme,
     pub panel_colors: PanelColors,
     pub cursor_visible: bool,
+    pub ime_preedit: String,
 }
 
 impl Renderer {
@@ -137,6 +138,7 @@ impl Renderer {
             theme,
             panel_colors,
             cursor_visible: true,
+            ime_preedit: String::new(),
         })
     }
 
@@ -302,8 +304,29 @@ impl Renderer {
                     cell_height: self.grid.cell_height,
                 });
 
-                // Overlay blinking underline cursor
-                if self.cursor_visible && content.cursor_row < active_content_rows {
+                // Overlay IME preedit text at cursor position
+                if !self.ime_preedit.is_empty() && content.cursor_row < active_content_rows {
+                    let preedit_fg = self.theme.colors.cursor.to_rgb();
+                    let preedit_bg = self.theme.colors.background.to_rgb();
+                    let preedit_cells: Vec<TerminalCell> = self.ime_preedit.chars().map(|c| {
+                        TerminalCell {
+                            c,
+                            fg: preedit_fg,
+                            bg: preedit_bg,
+                            bold: false,
+                            italic: false,
+                            underline: true,
+                        }
+                    }).collect();
+                    regions.push(RenderRegion {
+                        cells: vec![preedit_cells],
+                        origin_x: content_x + content.cursor_col as f32 * self.grid.cell_width,
+                        origin_y: content_origin_y + content.cursor_row as f32 * self.grid.cell_height,
+                        cell_width: self.grid.cell_width,
+                        cell_height: self.grid.cell_height,
+                    });
+                } else if self.cursor_visible && content.cursor_row < active_content_rows {
+                    // Overlay blinking underline cursor (only when no preedit)
                     let cursor_color = self.theme.colors.cursor.to_rgb();
                     let bg = self.theme.colors.background.to_rgb();
                     let cursor_cell = TerminalCell {
