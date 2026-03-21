@@ -224,6 +224,77 @@ impl Default for FontConfig {
     }
 }
 
+/// ANSI terminal color palette (16 colors).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct AnsiColors {
+    pub black: ThemeColor,
+    pub red: ThemeColor,
+    pub green: ThemeColor,
+    pub yellow: ThemeColor,
+    pub blue: ThemeColor,
+    pub magenta: ThemeColor,
+    pub cyan: ThemeColor,
+    pub white: ThemeColor,
+    pub bright_black: ThemeColor,
+    pub bright_red: ThemeColor,
+    pub bright_green: ThemeColor,
+    pub bright_yellow: ThemeColor,
+    pub bright_blue: ThemeColor,
+    pub bright_magenta: ThemeColor,
+    pub bright_cyan: ThemeColor,
+    pub bright_white: ThemeColor,
+}
+
+impl Default for AnsiColors {
+    /// Catppuccin Mocha ANSI palette — softer than classic xterm.
+    fn default() -> Self {
+        Self {
+            black: ThemeColor::new(0x45, 0x47, 0x5a),         // #45475a
+            red: ThemeColor::new(0xf3, 0x8b, 0xa8),           // #f38ba8
+            green: ThemeColor::new(0xa6, 0xe3, 0xa1),         // #a6e3a1
+            yellow: ThemeColor::new(0xf9, 0xe2, 0xaf),        // #f9e2af
+            blue: ThemeColor::new(0x89, 0xb4, 0xfa),          // #89b4fa
+            magenta: ThemeColor::new(0xf5, 0xc2, 0xe7),       // #f5c2e7
+            cyan: ThemeColor::new(0x94, 0xe2, 0xd5),          // #94e2d5
+            white: ThemeColor::new(0xba, 0xc2, 0xde),         // #bac2de
+            bright_black: ThemeColor::new(0x58, 0x5b, 0x70),  // #585b70
+            bright_red: ThemeColor::new(0xf3, 0x8b, 0xa8),    // #f38ba8
+            bright_green: ThemeColor::new(0xa6, 0xe3, 0xa1),  // #a6e3a1
+            bright_yellow: ThemeColor::new(0xf9, 0xe2, 0xaf), // #f9e2af
+            bright_blue: ThemeColor::new(0x89, 0xb4, 0xfa),   // #89b4fa
+            bright_magenta: ThemeColor::new(0xf5, 0xc2, 0xe7),// #f5c2e7
+            bright_cyan: ThemeColor::new(0x94, 0xe2, 0xd5),   // #94e2d5
+            bright_white: ThemeColor::new(0xa6, 0xad, 0xc8),  // #a6adc8
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl AnsiColors {
+    /// Convert to a 16-element array of Rgb values (indexed 0..15).
+    pub fn to_table(&self) -> [Rgb; 16] {
+        [
+            self.black.to_rgb(),
+            self.red.to_rgb(),
+            self.green.to_rgb(),
+            self.yellow.to_rgb(),
+            self.blue.to_rgb(),
+            self.magenta.to_rgb(),
+            self.cyan.to_rgb(),
+            self.white.to_rgb(),
+            self.bright_black.to_rgb(),
+            self.bright_red.to_rgb(),
+            self.bright_green.to_rgb(),
+            self.bright_yellow.to_rgb(),
+            self.bright_blue.to_rgb(),
+            self.bright_magenta.to_rgb(),
+            self.bright_cyan.to_rgb(),
+            self.bright_white.to_rgb(),
+        ]
+    }
+}
+
 /// Comprehensive theme for the Surfterm application.
 ///
 /// All fields use `#[serde(default)]` so partial theme files work correctly:
@@ -233,6 +304,7 @@ impl Default for FontConfig {
 pub struct SurftermTheme {
     pub colors: ThemeColors,
     pub font: FontConfig,
+    pub ansi: AnsiColors,
 }
 
 /// Type alias for backward compatibility.
@@ -447,9 +519,6 @@ impl Default for ThemeManager {
     }
 }
 
-/// Convert HSL color values to a `ThemeColor` (RGB).
-///
-/// - `h`: hue in degrees (0.0..360.0)
 /// Convert sRGB component (0.0..1.0) to linear space.
 ///
 /// sRGB uses a piecewise transfer function. wgpu's Srgb surface formats

@@ -65,25 +65,25 @@ pub struct TerminalContent {
 fn default_color_table() -> [Rgb; 256] {
     let mut table = [Rgb::new(0, 0, 0); 256];
 
-    // Standard ANSI colors (0-7).
-    table[0] = Rgb::new(0, 0, 0); // Black
-    table[1] = Rgb::new(205, 0, 0); // Red
-    table[2] = Rgb::new(0, 205, 0); // Green
-    table[3] = Rgb::new(205, 205, 0); // Yellow
-    table[4] = Rgb::new(0, 0, 238); // Blue
-    table[5] = Rgb::new(205, 0, 205); // Magenta
-    table[6] = Rgb::new(0, 205, 205); // Cyan
-    table[7] = Rgb::new(229, 229, 229); // White
+    // Use Catppuccin Mocha ANSI palette (softer than classic xterm).
+    table[0] = Rgb::new(0x45, 0x47, 0x5a);  // Black
+    table[1] = Rgb::new(0xf3, 0x8b, 0xa8);  // Red
+    table[2] = Rgb::new(0xa6, 0xe3, 0xa1);  // Green
+    table[3] = Rgb::new(0xf9, 0xe2, 0xaf);  // Yellow
+    table[4] = Rgb::new(0x89, 0xb4, 0xfa);  // Blue
+    table[5] = Rgb::new(0xf5, 0xc2, 0xe7);  // Magenta
+    table[6] = Rgb::new(0x94, 0xe2, 0xd5);  // Cyan
+    table[7] = Rgb::new(0xba, 0xc2, 0xde);  // White
 
     // Bright ANSI colors (8-15).
-    table[8] = Rgb::new(127, 127, 127); // BrightBlack
-    table[9] = Rgb::new(255, 0, 0); // BrightRed
-    table[10] = Rgb::new(0, 255, 0); // BrightGreen
-    table[11] = Rgb::new(255, 255, 0); // BrightYellow
-    table[12] = Rgb::new(92, 92, 255); // BrightBlue
-    table[13] = Rgb::new(255, 0, 255); // BrightMagenta
-    table[14] = Rgb::new(0, 255, 255); // BrightCyan
-    table[15] = Rgb::new(255, 255, 255); // BrightWhite
+    table[8] = Rgb::new(0x58, 0x5b, 0x70);  // BrightBlack
+    table[9] = Rgb::new(0xf3, 0x8b, 0xa8);  // BrightRed
+    table[10] = Rgb::new(0xa6, 0xe3, 0xa1); // BrightGreen
+    table[11] = Rgb::new(0xf9, 0xe2, 0xaf); // BrightYellow
+    table[12] = Rgb::new(0x89, 0xb4, 0xfa); // BrightBlue
+    table[13] = Rgb::new(0xf5, 0xc2, 0xe7); // BrightMagenta
+    table[14] = Rgb::new(0x94, 0xe2, 0xd5); // BrightCyan
+    table[15] = Rgb::new(0xa6, 0xad, 0xc8); // BrightWhite
 
     // 6x6x6 color cube (16-231).
     for r in 0..6u8 {
@@ -119,11 +119,11 @@ fn resolve_color(color: &Color, color_table: &[Rgb; 256]) -> Rgb {
                 // fall back to sensible defaults.
                 match named {
                     NamedColor::Foreground | NamedColor::BrightForeground => {
-                        Rgb::new(255, 255, 255)
+                        Rgb::new(0xcd, 0xd6, 0xf4) // Catppuccin text
                     }
-                    NamedColor::Background => Rgb::new(0, 0, 0),
-                    NamedColor::Cursor => Rgb::new(255, 255, 255),
-                    _ => Rgb::new(255, 255, 255),
+                    NamedColor::Background => Rgb::new(0x1a, 0x2e, 0x1a), // theme bg
+                    NamedColor::Cursor => Rgb::new(0xf5, 0xe0, 0xdc),
+                    _ => Rgb::new(0xcd, 0xd6, 0xf4),
                 }
             }
         }
