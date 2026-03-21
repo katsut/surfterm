@@ -50,6 +50,9 @@ seahash = "4"
 # Unique IDs
 uuid = { version = "1", features = ["v4"] }
 
+# Menu bar
+muda = "0.15"
+
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3"

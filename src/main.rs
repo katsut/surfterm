@@ -8,6 +8,7 @@ mod detector;
 mod input;
 mod layer;
 mod llm;
+mod menu;
 mod preview;
 mod renderer;
 mod session;

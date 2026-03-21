@@ -18,6 +18,7 @@ use crate::config::theme::ThemeManager;
 use crate::detector::patterns::default_claude_code_state_patterns;
 use crate::detector::StateDetector;
 use crate::input::{InputAction, InputHandler, InputMode, SurftermCmd};
+use crate::menu::{AppMenu, MenuAction};
 use crate::renderer::panel::{CardInfo, SidePanelEntry};
 use crate::renderer::Renderer;
 use crate::session::pty::PtyHandle;
@@ -69,6 +70,9 @@ struct App {
     // Terminal dimensions (for the main area, excluding sidebar)
     cols: u16,
     rows: u16,
+    /// macOS menu bar (kept alive for the lifetime of the app).
+    #[allow(dead_code)]
+    app_menu: Option<AppMenu>,
 }
 
 impl App {
@@ -85,6 +89,7 @@ impl App {
             cursor_position: PhysicalPosition::new(0.0, 0.0),
             cols: 80,
             rows: 24,
+            app_menu: None,
         }
     }
 
@@ -210,7 +215,7 @@ impl App {
 
     /// Build side panel entries from current sessions and push to renderer.
     fn update_side_panel(&mut self) {
-        let entries: Vec<SidePanelEntry> = self
+        let mut entries: Vec<SidePanelEntry> = self
             .session_order
             .iter()
             .filter_map(|id| {
@@ -223,6 +228,9 @@ impl App {
                 })
             })
             .collect();
+
+        // Active session always at the top of the list
+        entries.sort_by_key(|e| !e.is_active);
 
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.update_side_panel(entries);
@@ -521,6 +529,9 @@ impl ApplicationHandler<AppEvent> for App {
         self.window = Some(window);
         self.renderer = Some(renderer);
 
+        // Set up the macOS menu bar
+        self.app_menu = Some(AppMenu::new());
+
         // Spawn the initial session
         self.spawn_session();
     }
@@ -765,6 +776,54 @@ impl ApplicationHandler<AppEvent> for App {
             AppEvent::RequestRedraw => {
                 if let Some(window) = self.window.as_ref() {
                     window.request_redraw();
+                }
+            }
+        }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // Drain pending menu events from the muda channel.
+        // Collect actions first to avoid borrow conflicts with self.
+        let actions: Vec<MenuAction> = {
+            let Some(app_menu) = self.app_menu.as_ref() else {
+                return;
+            };
+            let mut actions = Vec::new();
+            while let Ok(event) = muda::MenuEvent::receiver().try_recv() {
+                if let Some(action) = app_menu.action_for_event(&event) {
+                    actions.push(action);
+                }
+            }
+            actions
+        };
+
+        for action in actions {
+            match action {
+                MenuAction::NewSession => {
+                    self.spawn_session();
+                    if let Some(window) = self.window.as_ref() {
+                        window.request_redraw();
+                    }
+                }
+                MenuAction::CloseSession => {
+                    if let Some(active_id) = self.active_session {
+                        self.kill_session(active_id);
+                        if self.sessions.is_empty() {
+                            info!("Last session closed via menu, exiting");
+                            event_loop.exit();
+                        }
+                    }
+                    if let Some(window) = self.window.as_ref() {
+                        window.request_redraw();
+                    }
+                }
+                MenuAction::ToggleRawView => {
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.toggle_display_mode();
+                    }
+                    if let Some(window) = self.window.as_ref() {
+                        window.request_redraw();
+                    }
                 }
             }
         }
