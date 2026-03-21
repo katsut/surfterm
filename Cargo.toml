@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "AI-aware terminal emulator for managing multiple coding sessions"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/tsuruta/surfterm"
+repository = "https://github.com/katsut/surfterm"
 
 [dependencies]
 # PTY & VT emulation
@@ -57,3 +57,15 @@ tempfile = "3"
 [[bench]]
 name = "stream_splitter"
 harness = false
+
+[profile.dev]
+opt-level = 0
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 1
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true
