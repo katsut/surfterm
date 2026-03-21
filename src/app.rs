@@ -694,9 +694,11 @@ impl ApplicationHandler<AppEvent> for App {
                                 let (_, card_dims_rows) = renderer.active_card_dimensions();
                                 let active_tab_rows = 1;
                                 let _ = card_dims_rows; // used for bounds check
-                                let preedit_chars = self.ime_preedit.chars().count();
+                                let preedit_width: usize = self.ime_preedit.chars()
+                                    .map(|c| if crate::renderer::is_wide_char(c) { 2 } else { 1 })
+                                    .sum();
                                 let cursor_x = renderer.grid.main_rect().x
-                                    + (content.cursor_col + preedit_chars) as f32 * renderer.grid.cell_width;
+                                    + (content.cursor_col + preedit_width) as f32 * renderer.grid.cell_width;
                                 let cursor_y = renderer.grid.main_rect().y
                                     + (active_tab_rows as f32 + content.cursor_row as f32)
                                         * renderer.grid.cell_height;

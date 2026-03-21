@@ -304,27 +304,32 @@ impl Renderer {
                     cell_height: self.grid.cell_height,
                 });
 
-                // Overlay IME preedit text at cursor position
+                // Overlay IME preedit text at cursor position (wide chars get 2 cells)
                 if !self.ime_preedit.is_empty() && content.cursor_row < active_content_rows {
                     let preedit_fg = self.theme.colors.cursor.to_rgb();
                     let preedit_bg = self.theme.colors.background.to_rgb();
-                    let preedit_cells: Vec<TerminalCell> = self.ime_preedit.chars().map(|c| {
-                        TerminalCell {
-                            c,
+                    let cursor_y = content_origin_y + content.cursor_row as f32 * self.grid.cell_height;
+                    let mut x_offset = content_x + content.cursor_col as f32 * self.grid.cell_width;
+
+                    for ch in self.ime_preedit.chars() {
+                        let char_width = if is_wide_char(ch) { 2.0 } else { 1.0 };
+                        let cell = TerminalCell {
+                            c: ch,
                             fg: preedit_fg,
                             bg: preedit_bg,
                             bold: false,
                             italic: false,
                             underline: true,
-                        }
-                    }).collect();
-                    regions.push(RenderRegion {
-                        cells: vec![preedit_cells],
-                        origin_x: content_x + content.cursor_col as f32 * self.grid.cell_width,
-                        origin_y: content_origin_y + content.cursor_row as f32 * self.grid.cell_height,
-                        cell_width: self.grid.cell_width,
-                        cell_height: self.grid.cell_height,
-                    });
+                        };
+                        regions.push(RenderRegion {
+                            cells: vec![vec![cell]],
+                            origin_x: x_offset,
+                            origin_y: cursor_y,
+                            cell_width: self.grid.cell_width * char_width,
+                            cell_height: self.grid.cell_height,
+                        });
+                        x_offset += self.grid.cell_width * char_width;
+                    }
                 } else if self.cursor_visible && content.cursor_row < active_content_rows {
                     // Overlay blinking underline cursor (only when no preedit)
                     let cursor_color = self.theme.colors.cursor.to_rgb();
@@ -604,6 +609,26 @@ impl Renderer {
         let content_rows = main_rows.saturating_sub(active_tab_rows + bg_tab_rows) as u16;
         (main_cols, content_rows)
     }
+}
+
+/// Check if a character is a wide (fullwidth/CJK) character that occupies 2 terminal cells.
+pub fn is_wide_char(c: char) -> bool {
+    let cp = c as u32;
+    // CJK Unified Ideographs and extensions
+    (0x2E80..=0x9FFF).contains(&cp)
+        || (0xF900..=0xFAFF).contains(&cp)
+        || (0xFE30..=0xFE4F).contains(&cp)
+        || (0x20000..=0x2FA1F).contains(&cp)
+        // Fullwidth forms
+        || (0xFF01..=0xFF60).contains(&cp)
+        || (0xFFE0..=0xFFE6).contains(&cp)
+        // Hangul
+        || (0xAC00..=0xD7AF).contains(&cp)
+        // Katakana/Hiragana (fullwidth)
+        || (0x3000..=0x303F).contains(&cp)
+        || (0x3040..=0x309F).contains(&cp)
+        || (0x30A0..=0x30FF).contains(&cp)
+        || (0x31F0..=0x31FF).contains(&cp)
 }
 
 #[cfg(test)]
