@@ -11,6 +11,22 @@ use crate::session::terminal::TerminalCell;
 
 use super::grid::GridLayout;
 
+/// A rectangular region of terminal cells to be rendered at a specific position.
+/// Each region has its own origin and cell dimensions, allowing side-by-side
+/// placement of sidebar and main content.
+pub struct RenderRegion {
+    /// 2D grid of terminal cells (rows x cols).
+    pub cells: Vec<Vec<TerminalCell>>,
+    /// Physical pixel X offset for this region's top-left corner.
+    pub origin_x: f32,
+    /// Physical pixel Y offset for this region's top-left corner.
+    pub origin_y: f32,
+    /// Width of a single cell in physical pixels.
+    pub cell_width: f32,
+    /// Height of a single cell in physical pixels.
+    pub cell_height: f32,
+}
+
 /// Text renderer wrapping glyphon's font system, glyph cache, texture atlas,
 /// and text renderer pipeline.
 #[allow(dead_code)]
@@ -57,8 +73,130 @@ impl TextRenderer {
         }
     }
 
+    /// Prepare multiple render regions using per-cell Buffer positioning.
+    ///
+    /// Each non-space cell gets its own glyphon Buffer placed at exact
+    /// `(origin_x + col * cell_width, origin_y + row * cell_height)` coordinates.
+    /// This ensures fixed-grid positioning regardless of proportional font metrics.
+    #[instrument(skip_all)]
+    pub fn render_grid_prepare(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        regions: &[RenderRegion],
+        surface_size: (u32, u32),
+    ) -> Result<()> {
+        // Collect all per-cell Buffers across all regions.
+        // We store (Buffer, left, top) tuples so we can build TextAreas after.
+        struct CellBuffer {
+            buffer: Buffer,
+            left: f32,
+            top: f32,
+        }
+
+        let mut cell_buffers: Vec<CellBuffer> = Vec::new();
+
+        for region in regions {
+            let metrics = Metrics::new(self.font_size, region.cell_height);
+
+            for (row_idx, row_cells) in region.cells.iter().enumerate() {
+                for (col_idx, cell) in row_cells.iter().enumerate() {
+                    // Skip empty/space cells for performance.
+                    if cell.c == ' ' {
+                        continue;
+                    }
+
+                    let mut buffer = Buffer::new(&mut self.font_system, metrics);
+                    buffer.set_size(
+                        &mut self.font_system,
+                        Some(region.cell_width),
+                        Some(region.cell_height),
+                    );
+
+                    let weight = if cell.bold {
+                        Weight::BOLD
+                    } else {
+                        Weight::NORMAL
+                    };
+
+                    let ch = cell.c.to_string();
+                    let attrs = Attrs::new()
+                        .family(Family::Monospace)
+                        .weight(weight)
+                        .color(Color::rgb(cell.fg.r, cell.fg.g, cell.fg.b));
+
+                    buffer.set_rich_text(
+                        &mut self.font_system,
+                        [(&*ch, attrs)],
+                        &Attrs::new().family(Family::Monospace),
+                        Shaping::Basic,
+                        None,
+                    );
+                    buffer.shape_until_scroll(&mut self.font_system, false);
+
+                    let left = region.origin_x + col_idx as f32 * region.cell_width;
+                    let top = region.origin_y + row_idx as f32 * region.cell_height;
+
+                    cell_buffers.push(CellBuffer { buffer, left, top });
+                }
+            }
+        }
+
+        // Update viewport resolution.
+        self.viewport.update(
+            queue,
+            Resolution {
+                width: surface_size.0,
+                height: surface_size.1,
+            },
+        );
+
+        let bounds = TextBounds {
+            left: 0,
+            top: 0,
+            right: surface_size.0 as i32,
+            bottom: surface_size.1 as i32,
+        };
+
+        let text_areas: Vec<TextArea<'_>> = cell_buffers
+            .iter()
+            .map(|cb| TextArea {
+                buffer: &cb.buffer,
+                left: cb.left,
+                top: cb.top,
+                scale: 1.0,
+                bounds,
+                default_color: Color::rgb(205, 214, 244),
+                custom_glyphs: &[],
+            })
+            .collect();
+
+        tracing::debug!(
+            total_cell_buffers = cell_buffers.len(),
+            num_regions = regions.len(),
+            "render_grid_prepare"
+        );
+
+        self.renderer.prepare(
+            device,
+            queue,
+            &mut self.font_system,
+            &mut self.atlas,
+            &self.viewport,
+            text_areas,
+            &mut self.swash_cache,
+        )?;
+
+        self.atlas.trim();
+
+        Ok(())
+    }
+
     /// Prepare terminal cells for rendering (glyphon prepare step).
     /// Must be called before `render_pass()`.
+    ///
+    /// Deprecated: Use `render_grid_prepare` for correct cell-level positioning.
+    #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
     #[instrument(skip_all)]
     pub fn render_cells_prepare(
@@ -164,6 +302,7 @@ impl TextRenderer {
     }
 
     /// Build glyphon Buffers from terminal cells.
+    #[allow(dead_code)]
     fn build_buffers(
         &mut self,
         grid: &GridLayout,
@@ -219,6 +358,9 @@ impl TextRenderer {
     }
 
     /// Prepare two regions (sidebar + main) in a single glyphon prepare call.
+    ///
+    /// Deprecated: Use `render_grid_prepare` for correct cell-level positioning.
+    #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
     #[instrument(skip_all)]
     pub fn render_two_regions_prepare(
@@ -277,7 +419,7 @@ impl TextRenderer {
 
         if !text_areas.is_empty() {
             let first = &text_areas[0];
-            let last_sidebar = if sidebar_buffers.len() > 0 { &text_areas[sidebar_buffers.len() - 1] } else { first };
+            let last_sidebar = if !sidebar_buffers.is_empty() { &text_areas[sidebar_buffers.len() - 1] } else { first };
             let first_main = if sidebar_buffers.len() < text_areas.len() { &text_areas[sidebar_buffers.len()] } else { first };
             tracing::info!(
                 total_areas = text_areas.len(),

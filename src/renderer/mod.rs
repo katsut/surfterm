@@ -5,7 +5,6 @@ pub mod text;
 use std::sync::Arc;
 
 use anyhow::Result;
-use glyphon::TextBounds;
 use tracing::instrument;
 use winit::window::Window;
 
@@ -14,7 +13,7 @@ use crate::session::terminal::TerminalContent;
 
 use self::grid::GridLayout;
 use self::panel::{DisplayMode, MessagePanel, SidePanel, SidePanelEntry, StatePanel};
-use self::text::TextRenderer;
+use self::text::{RenderRegion, TextRenderer};
 
 /// Default font size in logical pixels for terminal cell rendering.
 /// This is multiplied by the window's scale factor for physical pixel rendering.
@@ -209,7 +208,7 @@ impl Renderer {
     }
 
     /// Render terminal content with the side panel on the left and terminal
-    /// content in the main area on the right.
+    /// content in the main area on the right, using per-cell grid positioning.
     #[instrument(skip(self, content))]
     pub fn render_content(&mut self, content: &TerminalContent) -> Result<()> {
         let output = self.acquire_surface_texture()?;
@@ -228,27 +227,41 @@ impl Renderer {
         let sidebar_rect = self.grid.sidebar_rect();
         let main_rect = self.grid.main_rect();
 
-        let _ = sidebar_rect;
-        let _ = main_rect;
+        // Build sidebar cells from the side panel.
+        let sidebar_cells = self.side_panel.to_terminal_cells(
+            self.grid.sidebar_cols(),
+            self.grid.main_rows(),
+            self.scale_factor,
+        );
 
-        // Render terminal content in the full window for now.
-        // TODO: Add sidebar rendering with proper cell-level positioning.
-        let clip = TextBounds {
-            left: 0,
-            top: 0,
-            right: self.config.width as i32,
-            bottom: self.config.height as i32,
-        };
+        // Build two render regions: sidebar (left) and main terminal (right).
+        let mut regions = Vec::with_capacity(2);
 
-        self.text_renderer.render_cells_prepare(
+        // Sidebar region.
+        if !sidebar_cells.is_empty() {
+            regions.push(RenderRegion {
+                cells: sidebar_cells,
+                origin_x: sidebar_rect.x,
+                origin_y: sidebar_rect.y,
+                cell_width: self.grid.cell_width,
+                cell_height: self.grid.cell_height,
+            });
+        }
+
+        // Main terminal region.
+        regions.push(RenderRegion {
+            cells: content.rows.clone(),
+            origin_x: main_rect.x,
+            origin_y: main_rect.y,
+            cell_width: self.grid.cell_width,
+            cell_height: self.grid.cell_height,
+        });
+
+        self.text_renderer.render_grid_prepare(
             &self.device,
             &self.queue,
-            &self.grid,
-            &content.rows,
+            &regions,
             surface_size,
-            0.0,
-            0.0,
-            Some(clip),
         )?;
 
         // Single render pass: clear + text
