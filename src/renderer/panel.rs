@@ -272,6 +272,186 @@ impl SidePanel {
     }
 }
 
+// ── Card Stack colors ──
+
+/// Card border color (#313244, Catppuccin surface0).
+const CARD_BORDER_FG: Rgb = Rgb::new(0x31, 0x32, 0x44);
+
+/// Card title bar accent color (#89b4fa, Catppuccin blue).
+const CARD_TITLE_ACCENT_FG: Rgb = Rgb::new(0x89, 0xb4, 0xfa);
+
+/// Background card title text (#cdd6f4, Catppuccin text).
+const CARD_BG_TITLE_FG: Rgb = Rgb::new(0xcd, 0xd6, 0xf4);
+
+/// Background card base colors, progressively lighter per layer.
+const CARD_BG_LAYERS: [Rgb; 4] = [
+    Rgb::new(0x25, 0x25, 0x38),
+    Rgb::new(0x2c, 0x2c, 0x42),
+    Rgb::new(0x33, 0x33, 0x4c),
+    Rgb::new(0x3a, 0x3a, 0x56),
+];
+
+/// Information about a single card in the stack.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
+pub struct CardInfo {
+    pub session_id: SessionId,
+    pub project_name: String,
+    pub state: SessionState,
+    pub is_active: bool,
+}
+
+/// Stacked card layout for the main content area.
+///
+/// The active (frontmost) card is rendered at (0,0) with full terminal content.
+/// Background cards appear as title bar rows at the bottom of the main area,
+/// progressively offset to the right, giving a stacked card visual effect.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct CardStack {
+    pub cards: Vec<CardInfo>,
+}
+
+impl Default for CardStack {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[allow(dead_code)]
+impl CardStack {
+    /// Create a new empty card stack.
+    pub fn new() -> Self {
+        Self { cards: Vec::new() }
+    }
+
+    /// Update the card stack with a new set of cards.
+    /// The first card is the active (frontmost) card.
+    pub fn update(&mut self, cards: Vec<CardInfo>) {
+        self.cards = cards;
+    }
+
+    /// Return the number of cards in the stack.
+    pub fn card_count(&self) -> usize {
+        self.cards.len()
+    }
+
+    /// Get the active (frontmost) card, if any.
+    pub fn active_card(&self) -> Option<&CardInfo> {
+        self.cards.first()
+    }
+
+    /// Get background cards (all cards except the active one).
+    pub fn background_cards(&self) -> &[CardInfo] {
+        if self.cards.len() > 1 {
+            &self.cards[1..]
+        } else {
+            &[]
+        }
+    }
+
+    /// Build the title bar row for a card as terminal cells.
+    ///
+    /// Format: `"─ project_name [state] ────────────────"`
+    /// The title bar uses the given foreground and background colors.
+    pub fn build_title_bar(
+        &self,
+        card: &CardInfo,
+        cols: usize,
+        title_fg: Rgb,
+        border_fg: Rgb,
+        bg: Rgb,
+    ) -> Vec<TerminalCell> {
+        let (state_label, state_fg) = match card.state {
+            SessionState::Running => ("Running", SIDE_DOT_RUNNING),
+            SessionState::WaitingForInput => ("Waiting", SIDE_DOT_WAITING),
+            SessionState::Error => ("Error", SIDE_DOT_ERROR),
+            SessionState::Idle => ("Idle", SIDE_DOT_IDLE),
+        };
+
+        // Build: "─ project_name [state] ─────"
+        let content = format!("\u{2500} {} [{}] ", card.project_name, state_label);
+        let mut row = Vec::with_capacity(cols);
+
+        for (i, ch) in content.chars().enumerate().take(cols) {
+            let fg = if i == 0 {
+                border_fg
+            } else if content[..i].contains('[') && !content[..i].contains(']') {
+                // Inside [state] brackets
+                state_fg
+            } else if i >= 2 && i < 2 + card.project_name.len() {
+                title_fg
+            } else {
+                border_fg
+            };
+            row.push(TerminalCell {
+                c: ch,
+                fg,
+                bg,
+                bold: card.is_active,
+                italic: false,
+                underline: false,
+            });
+        }
+
+        // Fill remaining with "─" border chars
+        while row.len() < cols {
+            row.push(TerminalCell {
+                c: '\u{2500}',
+                fg: border_fg,
+                bg,
+                bold: false,
+                italic: false,
+                underline: false,
+            });
+        }
+
+        row
+    }
+
+    /// Build terminal cells for the active card's title bar.
+    pub fn active_title_bar(&self, cols: usize) -> Option<Vec<TerminalCell>> {
+        self.active_card().map(|card| {
+            self.build_title_bar(card, cols, CARD_TITLE_ACCENT_FG, CARD_BORDER_FG, DEFAULT_BG)
+        })
+    }
+
+    /// Build terminal cells for background card header rows.
+    ///
+    /// Each background card gets one row. The rows are meant to be rendered
+    /// at the bottom of the main area, each progressively offset to the right
+    /// to create the stacked card visual.
+    ///
+    /// Returns: Vec of (left_offset_in_cells, row_cells).
+    pub fn background_title_bars(
+        &self,
+        cols: usize,
+        scale_factor: f32,
+        cell_width: f32,
+    ) -> Vec<(usize, Vec<TerminalCell>)> {
+        let card_offset_px = 20.0 * scale_factor;
+        let offset_cells = (card_offset_px / cell_width).ceil() as usize;
+
+        self.background_cards()
+            .iter()
+            .enumerate()
+            .map(|(i, card)| {
+                let left_offset = offset_cells * (i + 1);
+                let available_cols = cols.saturating_sub(left_offset);
+                let bg_color = CARD_BG_LAYERS[i % CARD_BG_LAYERS.len()];
+                let row = self.build_title_bar(
+                    card,
+                    available_cols,
+                    CARD_BG_TITLE_FG,
+                    CARD_BORDER_FG,
+                    bg_color,
+                );
+                (left_offset, row)
+            })
+            .collect()
+    }
+}
+
 /// A single entry in the session list panel.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(dead_code)]

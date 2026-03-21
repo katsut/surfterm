@@ -17,7 +17,7 @@ use winit::{
 use crate::detector::patterns::default_claude_code_state_patterns;
 use crate::detector::StateDetector;
 use crate::input::{InputAction, InputHandler, SurftermCmd};
-use crate::renderer::panel::SidePanelEntry;
+use crate::renderer::panel::{CardInfo, SidePanelEntry};
 use crate::renderer::Renderer;
 use crate::session::pty::PtyHandle;
 use crate::session::stream_splitter::StreamSplitter;
@@ -220,6 +220,82 @@ impl App {
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.update_side_panel(entries);
         }
+
+        // Also update the card stack
+        self.update_card_stack();
+    }
+
+    /// Build card stack from current sessions and push to renderer.
+    ///
+    /// The active session is placed first (frontmost card), followed by
+    /// background sessions in session_order.
+    fn update_card_stack(&mut self) {
+        let mut cards: Vec<CardInfo> = Vec::with_capacity(self.sessions.len());
+
+        // Active session first
+        if let Some(active_id) = self.active_session {
+            if let Some(pipeline) = self.sessions.get(&active_id) {
+                cards.push(CardInfo {
+                    session_id: active_id,
+                    project_name: pipeline.project_name.clone(),
+                    state: pipeline.detector.current_state(),
+                    is_active: true,
+                });
+            }
+        }
+
+        // Background sessions in order
+        for id in &self.session_order {
+            if Some(*id) == self.active_session {
+                continue;
+            }
+            if let Some(pipeline) = self.sessions.get(id) {
+                cards.push(CardInfo {
+                    session_id: *id,
+                    project_name: pipeline.project_name.clone(),
+                    state: pipeline.detector.current_state(),
+                    is_active: false,
+                });
+            }
+        }
+
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.update_card_stack(cards);
+        }
+
+        // Resize active session PTY to match card dimensions
+        self.resize_active_session_to_card();
+    }
+
+    /// Resize the active session's terminal and PTY to match the active card
+    /// content area (accounting for title bar and background card tabs).
+    fn resize_active_session_to_card(&mut self) {
+        if let Some(renderer) = self.renderer.as_ref() {
+            let (card_cols, card_rows) = renderer.active_card_dimensions();
+            if card_cols > 0 && card_rows > 0 && (card_cols != self.cols || card_rows != self.rows)
+            {
+                self.cols = card_cols;
+                self.rows = card_rows;
+
+                if let Some(active_id) = self.active_session {
+                    if let Some(pipeline) = self.sessions.get_mut(&active_id) {
+                        pipeline.terminal.resize(self.cols, self.rows);
+                        let master = Arc::clone(&pipeline.master);
+                        let rows = self.rows;
+                        let cols = self.cols;
+                        self.tokio_handle.spawn(async move {
+                            let m = master.lock().await;
+                            let _ = m.resize(PtySize {
+                                rows,
+                                cols,
+                                pixel_width: 0,
+                                pixel_height: 0,
+                            });
+                        });
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -251,7 +327,9 @@ impl ApplicationHandler<AppEvent> for App {
             }
         };
 
-        // Calculate terminal dimensions from main area (excluding sidebar)
+        // Calculate terminal dimensions from main area (excluding sidebar).
+        // These are initial values; they will be adjusted by update_card_stack
+        // once sessions are added.
         self.cols = renderer.grid.main_cols();
         self.rows = renderer.grid.main_rows();
 
@@ -279,25 +357,14 @@ impl ApplicationHandler<AppEvent> for App {
             WindowEvent::Resized(physical_size) => {
                 if let Some(renderer) = self.renderer.as_mut() {
                     renderer.resize(physical_size);
-                    self.cols = renderer.grid.main_cols();
-                    self.rows = renderer.grid.main_rows();
                 }
-                // Resize all session terminals and the active session's PTY
+                // Recalculate card-aware dimensions and resize active session
+                self.update_card_stack();
+                // Also resize non-active terminals to the base grid size
+                // (they'll be resized properly when switched to)
                 for (id, pipeline) in self.sessions.iter_mut() {
-                    pipeline.terminal.resize(self.cols, self.rows);
-                    if self.active_session == Some(*id) {
-                        let master = Arc::clone(&pipeline.master);
-                        let rows = self.rows;
-                        let cols = self.cols;
-                        self.tokio_handle.spawn(async move {
-                            let m = master.lock().await;
-                            let _ = m.resize(PtySize {
-                                rows,
-                                cols,
-                                pixel_width: 0,
-                                pixel_height: 0,
-                            });
-                        });
+                    if self.active_session != Some(*id) {
+                        pipeline.terminal.resize(self.cols, self.rows);
                     }
                 }
                 if let Some(window) = self.window.as_ref() {

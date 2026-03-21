@@ -12,7 +12,7 @@ use crate::session::state::SessionState;
 use crate::session::terminal::TerminalContent;
 
 use self::grid::GridLayout;
-use self::panel::{DisplayMode, MessagePanel, SidePanel, SidePanelEntry, StatePanel};
+use self::panel::{CardInfo, CardStack, DisplayMode, MessagePanel, SidePanel, SidePanelEntry, StatePanel};
 use self::text::{RenderRegion, TextRenderer};
 
 /// Default font size in logical pixels for terminal cell rendering.
@@ -34,6 +34,7 @@ pub struct Renderer {
     pub message_panel: MessagePanel,
     pub state_panel: StatePanel,
     pub side_panel: SidePanel,
+    pub card_stack: CardStack,
     scale_factor: f32,
 }
 
@@ -124,6 +125,7 @@ impl Renderer {
             message_panel: MessagePanel::new(),
             state_panel: StatePanel::new(),
             side_panel: SidePanel::new(),
+            card_stack: CardStack::new(),
             scale_factor,
         })
     }
@@ -207,8 +209,12 @@ impl Renderer {
         Ok(())
     }
 
-    /// Render terminal content with the side panel on the left and terminal
-    /// content in the main area on the right, using per-cell grid positioning.
+    /// Render terminal content with a stacked card layout in the main area
+    /// and the side panel on the right.
+    ///
+    /// The active card occupies most of the main area with a title bar at row 0
+    /// and terminal content starting from row 1. Background cards appear as
+    /// title bar rows at the bottom, progressively offset to the right.
     #[instrument(skip(self, content))]
     pub fn render_content(&mut self, content: &TerminalContent) -> Result<()> {
         let output = self.acquire_surface_texture()?;
@@ -234,8 +240,7 @@ impl Renderer {
             self.scale_factor,
         );
 
-        // Build two render regions: sidebar (left) and main terminal (right).
-        let mut regions = Vec::with_capacity(2);
+        let mut regions = Vec::with_capacity(4);
 
         // Sidebar region.
         if !sidebar_cells.is_empty() {
@@ -248,14 +253,74 @@ impl Renderer {
             });
         }
 
-        // Main terminal region.
-        regions.push(RenderRegion {
-            cells: content.rows.clone(),
-            origin_x: main_rect.x,
-            origin_y: main_rect.y,
-            cell_width: self.grid.cell_width,
-            cell_height: self.grid.cell_height,
-        });
+        let main_cols = self.grid.main_cols() as usize;
+        let main_rows = self.grid.main_rows() as usize;
+        let num_bg_cards = self.card_stack.background_cards().len();
+
+        // Calculate how many rows are reserved for background card tabs at the bottom.
+        let bg_rows = num_bg_cards.min(main_rows.saturating_sub(2)); // Leave at least 2 rows for active card
+        let active_content_rows = main_rows.saturating_sub(1 + bg_rows); // 1 for title bar
+
+        // ── Active card title bar (row 0 of main area) ──
+        if let Some(title_row) = self.card_stack.active_title_bar(main_cols) {
+            regions.push(RenderRegion {
+                cells: vec![title_row],
+                origin_x: main_rect.x,
+                origin_y: main_rect.y,
+                cell_width: self.grid.cell_width,
+                cell_height: self.grid.cell_height,
+            });
+        }
+
+        // ── Active card terminal content (rows 1..1+active_content_rows) ──
+        {
+            // Clip terminal content to the available rows for the active card.
+            let clipped_rows: Vec<Vec<_>> = content
+                .rows
+                .iter()
+                .take(active_content_rows)
+                .cloned()
+                .collect();
+
+            if !clipped_rows.is_empty() {
+                regions.push(RenderRegion {
+                    cells: clipped_rows,
+                    origin_x: main_rect.x,
+                    origin_y: main_rect.y + self.grid.cell_height, // offset by 1 row for title bar
+                    cell_width: self.grid.cell_width,
+                    cell_height: self.grid.cell_height,
+                });
+            }
+        }
+
+        // ── Background card header rows (at bottom of main area) ──
+        {
+            let bg_title_bars = self.card_stack.background_title_bars(
+                main_cols,
+                self.scale_factor,
+                self.grid.cell_width,
+            );
+
+            for (i, (left_offset_cells, row_cells)) in bg_title_bars.into_iter().enumerate() {
+                if i >= bg_rows {
+                    break;
+                }
+                // Position: bottom of the active card area, one row per bg card
+                let row_y_index = 1 + active_content_rows + i; // after title + content
+                let origin_y = main_rect.y + row_y_index as f32 * self.grid.cell_height;
+                let origin_x = main_rect.x + left_offset_cells as f32 * self.grid.cell_width;
+
+                if !row_cells.is_empty() {
+                    regions.push(RenderRegion {
+                        cells: vec![row_cells],
+                        origin_x,
+                        origin_y,
+                        cell_width: self.grid.cell_width,
+                        cell_height: self.grid.cell_height,
+                    });
+                }
+            }
+        }
 
         self.text_renderer.render_grid_prepare(
             &self.device,
@@ -325,6 +390,26 @@ impl Renderer {
     #[allow(dead_code)]
     pub fn update_side_panel(&mut self, entries: Vec<SidePanelEntry>) {
         self.side_panel.update_sessions(entries);
+    }
+
+    /// Update the card stack with session card information.
+    /// The active session should be first in the list.
+    #[allow(dead_code)]
+    pub fn update_card_stack(&mut self, cards: Vec<CardInfo>) {
+        self.card_stack.update(cards);
+    }
+
+    /// Calculate the terminal dimensions for the active card content area.
+    ///
+    /// Returns `(cols, rows)` accounting for the title bar row and background
+    /// card tab rows at the bottom.
+    pub fn active_card_dimensions(&self) -> (u16, u16) {
+        let main_cols = self.grid.main_cols();
+        let main_rows = self.grid.main_rows();
+        let num_bg_cards = self.card_stack.background_cards().len();
+        let bg_rows = num_bg_cards.min((main_rows as usize).saturating_sub(2));
+        let content_rows = (main_rows as usize).saturating_sub(1 + bg_rows) as u16;
+        (main_cols, content_rows)
     }
 }
 
