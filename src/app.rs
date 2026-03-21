@@ -160,10 +160,8 @@ impl App {
         self.sessions.insert(session_id, pipeline);
         self.session_order.push(session_id);
 
-        // Set as active if this is the first session
-        if self.active_session.is_none() {
-            self.active_session = Some(session_id);
-        }
+        // Always switch to the newly created session
+        self.active_session = Some(session_id);
 
         // Update side panel
         self.update_side_panel();
