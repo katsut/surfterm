@@ -37,6 +37,12 @@ impl SessionId {
     }
 }
 
+impl From<Uuid> for SessionId {
+    fn from(id: Uuid) -> Self {
+        Self(id)
+    }
+}
+
 impl std::fmt::Display for SessionId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -130,7 +136,7 @@ impl SessionManager {
             .to_string();
 
         // Spawn PTY
-        let pty = PtyHandle::spawn(rows, cols)?;
+        let pty = PtyHandle::spawn(rows, cols, "", "")?;
 
         // Create terminal emulator
         let terminal = Terminal::new(cols, rows);

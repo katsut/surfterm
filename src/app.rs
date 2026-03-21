@@ -42,6 +42,9 @@ pub enum AppEvent {
     ThemeChanged,
     /// Request a redraw of the window.
     RequestRedraw,
+    /// External notification received (e.g. Claude Code Notification hook).
+    /// Contains the session ID string from the hook.
+    NotificationReceived(String),
 }
 
 /// Per-session pipeline holding the terminal emulator, PTY handles, and processing components.
@@ -85,10 +88,17 @@ struct App {
     cursor_visible: bool,
     /// Last cursor blink toggle time.
     cursor_blink_at: std::time::Instant,
+    /// Path to the Unix socket for external notifications.
+    socket_path: String,
 }
 
 impl App {
     fn new(event_proxy: EventLoopProxy<AppEvent>, tokio_handle: tokio::runtime::Handle) -> Self {
+        let socket_path = format!("/tmp/surfterm-{}.sock", std::process::id());
+
+        // Start Unix socket listener for external notifications
+        Self::start_notification_listener(&socket_path, event_proxy.clone(), &tokio_handle);
+
         Self {
             window: None,
             renderer: None,
@@ -106,6 +116,7 @@ impl App {
             theme_watcher: None,
             cursor_visible: true,
             cursor_blink_at: std::time::Instant::now(),
+            socket_path,
         }
     }
 
@@ -127,8 +138,8 @@ impl App {
         let state_patterns = default_claude_code_state_patterns();
         let (detector, _state_rx) = StateDetector::new(state_patterns);
 
-        // Spawn PTY
-        let mut pty = match PtyHandle::spawn(rows, cols) {
+        // Spawn PTY with session ID and socket path for external notification hooks
+        let mut pty = match PtyHandle::spawn(rows, cols, &session_id.to_string(), &self.socket_path) {
             Ok(p) => p,
             Err(e) => {
                 tracing::error!("Failed to spawn PTY: {e}");
@@ -576,6 +587,59 @@ impl App {
             }
         }
     }
+
+    /// Start a Unix socket listener for external notification hooks.
+    ///
+    /// Claude Code's Notification hook can send the session ID to this socket,
+    /// which triggers auto-switch to the session waiting for input.
+    fn start_notification_listener(
+        socket_path: &str,
+        proxy: EventLoopProxy<AppEvent>,
+        _tokio_handle: &tokio::runtime::Handle,
+    ) {
+        let path = std::path::PathBuf::from(socket_path);
+        // Clean up stale socket
+        let _ = std::fs::remove_file(&path);
+
+        let listener = match std::os::unix::net::UnixListener::bind(&path) {
+            Ok(l) => l,
+            Err(e) => {
+                tracing::warn!("Failed to create notification socket at {}: {e}", path.display());
+                return;
+            }
+        };
+        listener.set_nonblocking(true).ok();
+
+        tracing::info!(path = %path.display(), "Notification socket listening");
+
+        // Spawn background thread (not tokio — UnixListener is std)
+        std::thread::spawn(move || {
+            use std::io::Read;
+            loop {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        let mut buf = String::new();
+                        if stream.read_to_string(&mut buf).is_ok() {
+                            let session_id = buf.trim().to_string();
+                            if !session_id.is_empty() {
+                                let _ = proxy.send_event(AppEvent::NotificationReceived(session_id));
+                            }
+                        }
+                    }
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.socket_path);
+    }
 }
 
 impl ApplicationHandler<AppEvent> for App {
@@ -977,6 +1041,19 @@ impl ApplicationHandler<AppEvent> for App {
             AppEvent::RequestRedraw => {
                 if let Some(window) = self.window.as_ref() {
                     window.request_redraw();
+                }
+            }
+            AppEvent::NotificationReceived(sid_str) => {
+                // Find the session matching the notification's session ID
+                if let Ok(target_id) = sid_str.parse::<uuid::Uuid>() {
+                    let target = SessionId::from(target_id);
+                    if self.sessions.contains_key(&target) && self.active_session != Some(target) {
+                        tracing::info!(%target, "Notification hook: switching to session");
+                        self.switch_to_session(target);
+                        if let Some(window) = self.window.as_ref() {
+                            window.request_redraw();
+                        }
+                    }
                 }
             }
         }

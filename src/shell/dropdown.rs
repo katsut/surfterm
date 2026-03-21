@@ -37,7 +37,7 @@ impl DropdownShell {
     pub fn toggle(&mut self, cols: u16, rows: u16) {
         if self.pty.is_none() {
             let shell_rows = ((rows as f32) * self.height_ratio).max(1.0) as u16;
-            match PtyHandle::spawn(shell_rows, cols) {
+            match PtyHandle::spawn(shell_rows, cols, "", "") {
                 Ok(pty) => {
                     let terminal = Terminal::new(cols, shell_rows);
                     self.pty = Some(pty);

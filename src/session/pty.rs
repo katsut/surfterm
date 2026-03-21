@@ -55,8 +55,11 @@ impl PtyHandle {
     ///
     /// The default shell is read from `$SHELL`; falls back to `/bin/zsh`.
     /// A background task continuously reads PTY output into the channel.
+    ///
+    /// `session_id` and `socket_path` are set as environment variables so that
+    /// external tools (e.g. Claude Code notification hooks) can signal Surfterm.
     #[instrument(skip_all, fields(rows, cols))]
-    pub fn spawn(rows: u16, cols: u16) -> Result<Self, PtyError> {
+    pub fn spawn(rows: u16, cols: u16, session_id: &str, socket_path: &str) -> Result<Self, PtyError> {
         let pty_system = native_pty_system();
 
         let size = PtySize {
@@ -76,6 +79,8 @@ impl PtyHandle {
         cmd.cwd(std::env::current_dir().unwrap_or_else(|_| "/".into()));
         cmd.env("TERM_PROGRAM", "surfterm");
         cmd.env("TERM", "xterm-256color");
+        cmd.env("SURFTERM_SESSION_ID", session_id);
+        cmd.env("SURFTERM_SOCK", socket_path);
         // Ensure UTF-8 locale so shells and tools handle multibyte characters
         if std::env::var("LANG").is_err() {
             cmd.env("LANG", "en_US.UTF-8");
