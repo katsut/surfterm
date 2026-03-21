@@ -103,22 +103,22 @@ impl GridLayout {
         }
     }
 
-    /// Returns the pixel rectangle for the left sidebar area.
+    /// Returns the pixel rectangle for the right sidebar area.
     #[instrument(skip(self))]
     pub fn sidebar_rect(&self) -> Rect {
         Rect {
-            x: 0.0,
+            x: (self.surface_width - self.sidebar_width).max(0.0),
             y: 0.0,
             width: self.sidebar_width,
             height: self.surface_height,
         }
     }
 
-    /// Returns the pixel rectangle for the main terminal area (right of sidebar).
+    /// Returns the pixel rectangle for the main terminal area (left of sidebar).
     #[instrument(skip(self))]
     pub fn main_rect(&self) -> Rect {
         Rect {
-            x: self.sidebar_width,
+            x: 0.0,
             y: 0.0,
             width: (self.surface_width - self.sidebar_width).max(0.0),
             height: self.surface_height,
@@ -274,17 +274,19 @@ mod tests {
         let grid = GridLayout::with_scale_factor(1280, 800, 16.0, 2.0);
         let sidebar = grid.sidebar_rect();
         // sidebar_width = floor(200.0 * 2.0) = 400
-        assert_eq!(sidebar.x, 0.0);
+        // sidebar is on the right: x = 1280 - 400 = 880
+        assert_eq!(sidebar.x, 880.0);
         assert_eq!(sidebar.y, 0.0);
         assert_eq!(sidebar.width, 400.0);
         assert_eq!(sidebar.height, 800.0);
     }
 
     #[test]
-    fn main_rect_starts_after_sidebar() {
+    fn main_rect_starts_at_zero() {
         let grid = GridLayout::with_scale_factor(1280, 800, 16.0, 2.0);
         let main = grid.main_rect();
-        assert_eq!(main.x, 400.0);
+        // main is on the left: x = 0
+        assert_eq!(main.x, 0.0);
         assert_eq!(main.y, 0.0);
         assert_eq!(main.width, 880.0);
         assert_eq!(main.height, 800.0);
