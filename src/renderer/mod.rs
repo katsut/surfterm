@@ -40,7 +40,6 @@ pub struct Renderer {
     pub theme: SurftermTheme,
     pub panel_colors: PanelColors,
     pub cursor_visible: bool,
-    pub ime_preedit: String,
 }
 
 impl Renderer {
@@ -138,7 +137,6 @@ impl Renderer {
             theme,
             panel_colors,
             cursor_visible: true,
-            ime_preedit: String::new(),
         })
     }
 
@@ -304,34 +302,8 @@ impl Renderer {
                     cell_height: self.grid.cell_height,
                 });
 
-                // Overlay IME preedit text at cursor position (wide chars get 2 cells)
-                if !self.ime_preedit.is_empty() && content.cursor_row < active_content_rows {
-                    let preedit_fg = self.theme.colors.cursor.to_rgb();
-                    let preedit_bg = self.theme.colors.background.to_rgb();
-                    let cursor_y = content_origin_y + content.cursor_row as f32 * self.grid.cell_height;
-                    let mut x_offset = content_x + content.cursor_col as f32 * self.grid.cell_width;
-
-                    for ch in self.ime_preedit.chars() {
-                        let char_width = if is_wide_char(ch) { 2.0 } else { 1.0 };
-                        let cell = TerminalCell {
-                            c: ch,
-                            fg: preedit_fg,
-                            bg: preedit_bg,
-                            bold: false,
-                            italic: false,
-                            underline: true,
-                        };
-                        regions.push(RenderRegion {
-                            cells: vec![vec![cell]],
-                            origin_x: x_offset,
-                            origin_y: cursor_y,
-                            cell_width: self.grid.cell_width * char_width,
-                            cell_height: self.grid.cell_height,
-                        });
-                        x_offset += self.grid.cell_width * char_width;
-                    }
-                } else if self.cursor_visible && content.cursor_row < active_content_rows {
-                    // Overlay blinking underline cursor (only when no preedit)
+                if self.cursor_visible && content.cursor_row < active_content_rows {
+                    // Overlay blinking underline cursor
                     let cursor_color = self.theme.colors.cursor.to_rgb();
                     let bg = self.theme.colors.background.to_rgb();
                     let cursor_cell = TerminalCell {
@@ -612,6 +584,7 @@ impl Renderer {
 }
 
 /// Check if a character is a wide (fullwidth/CJK) character that occupies 2 terminal cells.
+#[allow(dead_code)]
 pub fn is_wide_char(c: char) -> bool {
     let cp = c as u32;
     // CJK Unified Ideographs and extensions

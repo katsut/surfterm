@@ -84,8 +84,6 @@ struct App {
     cursor_visible: bool,
     /// Last cursor blink toggle time.
     cursor_blink_at: std::time::Instant,
-    /// Current IME preedit text (e.g. uncommitted hiragana).
-    ime_preedit: String,
 }
 
 impl App {
@@ -107,7 +105,6 @@ impl App {
             theme_watcher: None,
             cursor_visible: true,
             cursor_blink_at: std::time::Instant::now(),
-            ime_preedit: String::new(),
         }
     }
 
@@ -684,7 +681,6 @@ impl ApplicationHandler<AppEvent> for App {
 
                 if let Some(renderer) = self.renderer.as_mut() {
                     renderer.cursor_visible = self.cursor_visible;
-                    renderer.ime_preedit = self.ime_preedit.clone();
                     if let Some(active_id) = self.active_session {
                         if let Some(pipeline) = self.sessions.get(&active_id) {
                             let content = pipeline.terminal.content();
@@ -694,11 +690,8 @@ impl ApplicationHandler<AppEvent> for App {
                                 let (_, card_dims_rows) = renderer.active_card_dimensions();
                                 let active_tab_rows = 1;
                                 let _ = card_dims_rows; // used for bounds check
-                                let preedit_width: usize = self.ime_preedit.chars()
-                                    .map(|c| if crate::renderer::is_wide_char(c) { 2 } else { 1 })
-                                    .sum();
                                 let cursor_x = renderer.grid.main_rect().x
-                                    + (content.cursor_col + preedit_width) as f32 * renderer.grid.cell_width;
+                                    + content.cursor_col as f32 * renderer.grid.cell_width;
                                 let cursor_y = renderer.grid.main_rect().y
                                     + (active_tab_rows as f32 + content.cursor_row as f32)
                                         * renderer.grid.cell_height;
@@ -728,30 +721,20 @@ impl ApplicationHandler<AppEvent> for App {
                 }
             }
             WindowEvent::Ime(ime) => {
-                match ime {
-                    Ime::Preedit(text, _cursor) => {
-                        self.ime_preedit = text;
-                        if let Some(window) = self.window.as_ref() {
-                            window.request_redraw();
+                if let Ime::Commit(text) = ime {
+                    if let Some(active_id) = self.active_session {
+                        if let Some(pipeline) = self.sessions.get(&active_id) {
+                            let writer = Arc::clone(&pipeline.writer);
+                            let bytes = text.into_bytes();
+                            self.tokio_handle.spawn(async move {
+                                let mut w = writer.lock().await;
+                                let _ = w.write_all(&bytes);
+                                let _ = w.flush();
+                            });
                         }
                     }
-                    Ime::Commit(text) => {
-                        self.ime_preedit.clear();
-                        if let Some(active_id) = self.active_session {
-                            if let Some(pipeline) = self.sessions.get(&active_id) {
-                                let writer = Arc::clone(&pipeline.writer);
-                                let bytes = text.into_bytes();
-                                self.tokio_handle.spawn(async move {
-                                    let mut w = writer.lock().await;
-                                    let _ = w.write_all(&bytes);
-                                    let _ = w.flush();
-                                });
-                            }
-                        }
-                        self.cursor_visible = true;
-                        self.cursor_blink_at = std::time::Instant::now();
-                    }
-                    _ => {}
+                    self.cursor_visible = true;
+                    self.cursor_blink_at = std::time::Instant::now();
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
