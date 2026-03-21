@@ -51,6 +51,9 @@ pub struct PanelColors {
 
     // Session list
     pub session_selected_bg: Rgb,
+
+    // Main highlight color for session names, active elements
+    pub main_color: Rgb,
 }
 
 impl PanelColors {
@@ -85,6 +88,7 @@ impl PanelColors {
             ai_response: theme.colors.foreground.to_rgb(),
 
             session_selected_bg: theme.colors.sidebar.active_bg.to_rgb(),
+            main_color: theme.colors.main_color.to_rgb(),
         }
     }
 }
@@ -276,7 +280,7 @@ impl SidePanel {
 
             let mut row = Vec::with_capacity(cols);
             for (ci, ch) in text.chars().enumerate() {
-                let fg = if ci == 0 { dot_fg } else { colors.side_text };
+                let fg = if ci == 0 { dot_fg } else { colors.main_color };
                 row.push(TerminalCell {
                     c: ch,
                     fg,

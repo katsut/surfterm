@@ -1,7 +1,7 @@
 # Surfterm Theme Configuration
 #
-# This file shows all available theme colors with their default values
-# (Catppuccin Mocha). Copy this file to one of:
+# This file shows all available theme colors with their default values.
+# Copy this file to one of:
 #
 #   ~/.config/surfterm/theme.toml       (global theme)
 #   <project>/.surfterm/theme.toml      (per-directory override)
@@ -11,23 +11,24 @@
 
 # Base colors
 [colors]
-background = "#1e1e2e"     # Main background
+background = "#1a2e1a"     # Main background (dark green)
 foreground = "#cdd6f4"     # Default text color
 cursor     = "#f5e0dc"     # Cursor color
-accent     = "#f38ba8"     # Accent color for highlights
+accent     = "#a6e3a1"     # Accent color for highlights
+main_color = "#89b4fa"     # Main highlight color for session names, active elements
 
 # Sidebar (session list panel on the right)
 [colors.sidebar]
-background  = "#181825"    # Sidebar background
-foreground  = "#cdd6f4"    # Session name text
-separator   = "#585b70"    # Separator line color
+background  = "#142414"    # Sidebar background (darker green)
+foreground  = "#cdd6f4"    # Sidebar text
+separator   = "#3a5a3a"    # Separator line color (green-tinted)
 new_session = "#a6e3a1"    # "+ New Session" button text
-active_bg   = "#45475a"    # Background for the active session row
-selected_bg = "#585b70"    # Background for the keyboard-selected row
+active_bg   = "#2a4a2a"    # Background for the active session row
+selected_bg = "#3a5a3a"    # Background for the keyboard-selected row
 
 # Card title bars (stacked session cards in main area)
 [colors.card]
-border       = "#313244"   # Border/separator characters
+border       = "#3a5a3a"   # Border/separator characters
 title        = "#cdd6f4"   # Background card title text
 active_title = "#89b4fa"   # Active (foreground) card title text
 

@@ -119,12 +119,12 @@ pub struct SidebarColors {
 impl Default for SidebarColors {
     fn default() -> Self {
         Self {
-            background: ThemeColor::new(0x18, 0x18, 0x25), // #181825
+            background: ThemeColor::new(0x14, 0x24, 0x14), // #142414 (darker green)
             foreground: ThemeColor::new(0xcd, 0xd6, 0xf4), // #cdd6f4
-            separator: ThemeColor::new(0x58, 0x5b, 0x70),  // #585b70
+            separator: ThemeColor::new(0x3a, 0x5a, 0x3a),  // #3a5a3a (green-tinted)
             new_session: ThemeColor::new(0xa6, 0xe3, 0xa1), // #a6e3a1
-            active_bg: ThemeColor::new(0x45, 0x47, 0x5a),  // #45475a
-            selected_bg: ThemeColor::new(0x58, 0x5b, 0x70), // #585b70
+            active_bg: ThemeColor::new(0x2a, 0x4a, 0x2a),  // #2a4a2a
+            selected_bg: ThemeColor::new(0x3a, 0x5a, 0x3a), // #3a5a3a
         }
     }
 }
@@ -177,6 +177,8 @@ pub struct ThemeColors {
     pub foreground: ThemeColor,
     pub cursor: ThemeColor,
     pub accent: ThemeColor,
+    /// Main highlight color used for session names, active elements, etc.
+    pub main_color: ThemeColor,
     pub sidebar: SidebarColors,
     pub card: CardColors,
     pub state: StateColors,
@@ -185,10 +187,11 @@ pub struct ThemeColors {
 impl Default for ThemeColors {
     fn default() -> Self {
         Self {
-            background: ThemeColor::new(0x1e, 0x1e, 0x2e), // #1e1e2e
+            background: ThemeColor::new(0x1a, 0x2e, 0x1a), // #1a2e1a (from Ghostty)
             foreground: ThemeColor::new(0xcd, 0xd6, 0xf4), // #cdd6f4
             cursor: ThemeColor::new(0xf5, 0xe0, 0xdc),     // #f5e0dc
             accent: ThemeColor::new(0xf3, 0x8b, 0xa8),     // #f38ba8
+            main_color: ThemeColor::new(0x89, 0xb4, 0xfa), // #89b4fa (blue)
             sidebar: SidebarColors::default(),
             card: CardColors::default(),
             state: StateColors::default(),
