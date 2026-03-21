@@ -573,8 +573,9 @@ impl CardStack {
             } else {
                 border_fg
             };
+            let bold = card.is_active && i >= name_start && i < name_end;
             row.push(TerminalCell {
-                c: ch, fg, bg, bold: card.is_active, italic: false, underline: false,
+                c: ch, fg, bg, bold, italic: false, underline: false,
             });
         }
 

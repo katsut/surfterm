@@ -140,7 +140,7 @@ impl TextRenderer {
                         &mut self.font_system,
                         [(&*ch, attrs)],
                         &Attrs::new().family(family),
-                        Shaping::Basic,
+                        Shaping::Advanced,
                         None,
                     );
                     buffer.shape_until_scroll(&mut self.font_system, false);
