@@ -345,17 +345,14 @@ impl Renderer {
 
                 let divider_cells: Vec<Vec<TerminalCell>> = (0..total_rows)
                     .map(|row| {
-                        // No divider in header area (rows 0-1)
-                        let ch = if row < 2 {
-                            ' '
-                        } else if Some(row) == active_row {
+                        let ch = if Some(row) == active_row {
                             ' ' // gap for active session
-                        } else if active_row.is_some_and(|ar| row + 1 == ar && row >= 2) {
-                            '\u{256e}' // ╮ top corner
+                        } else if active_row.is_some_and(|ar| row + 1 == ar) {
+                            '\u{256e}' // ╮ top corner before gap
                         } else if active_row.is_some_and(|ar| row == ar + 1) {
-                            '\u{2570}' // ╰ bottom corner
+                            '\u{2570}' // ╰ bottom corner after gap
                         } else {
-                            '\u{2502}' // │
+                            '\u{2502}' // │ normal line
                         };
                         vec![TerminalCell {
                             c: ch,
