@@ -337,30 +337,23 @@ impl Renderer {
                 let divider_bg = self.panel_colors.background;
                 let total_rows = self.grid.main_rows() as usize;
 
-                // Active session is always first in the sidebar list (row 2).
-                // Row 0 = [+ New], Row 1 = separator, Row 2 = first/active session
+                // Layout: Row 0 = [+ New], Row 1 = separator, Row 2+ = sessions
+                // Active session is always first (row 2).
+                // Divider only starts from row 2 (session area).
                 let has_sessions = !self.side_panel.sessions.is_empty();
                 let active_row: Option<usize> = if has_sessions { Some(2) } else { None };
 
                 let divider_cells: Vec<Vec<TerminalCell>> = (0..total_rows)
                     .map(|row| {
-                        let _ch = if Some(row) == active_row {
+                        // No divider in header area (rows 0-1)
+                        let ch = if row < 2 {
+                            ' '
+                        } else if Some(row) == active_row {
                             ' ' // gap for active session
-                        } else if active_row.is_some_and(|ar| row + 1 == ar) {
+                        } else if active_row.is_some_and(|ar| row + 1 == ar && row >= 2) {
                             '\u{256e}' // ╮ top corner
                         } else if active_row.is_some_and(|ar| row == ar + 1) {
-                            '\u{256f}' // ╯ bottom corner ... actually ╰
-                            // Use ╰ for bottom-left curve
-                        } else {
-                            '\u{2502}' // │
-                        };
-                        // Adjust: use rounded corners
-                        let ch = if active_row.is_some_and(|ar| row + 1 == ar) {
-                            '\u{256e}' // ╮
-                        } else if active_row.is_some_and(|ar| row == ar + 1) {
-                            '\u{2570}' // ╰
-                        } else if Some(row) == active_row {
-                            ' '
+                            '\u{2570}' // ╰ bottom corner
                         } else {
                             '\u{2502}' // │
                         };
