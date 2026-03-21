@@ -258,7 +258,8 @@ impl Renderer {
             });
         }
 
-        let main_cols = self.grid.main_cols() as usize;
+        // Reserve 1 column for the vertical divider line
+        let main_cols = (self.grid.main_cols() as usize).saturating_sub(1);
         let main_rows = self.grid.main_rows() as usize;
         let num_bg_cards = self.card_stack.background_cards().len();
 
