@@ -39,6 +39,7 @@ pub struct Renderer {
     pub scale_factor: f32,
     pub theme: SurftermTheme,
     pub panel_colors: PanelColors,
+    pub cursor_visible: bool,
 }
 
 impl Renderer {
@@ -135,6 +136,7 @@ impl Renderer {
             scale_factor,
             theme,
             panel_colors,
+            cursor_visible: true,
         })
     }
 
@@ -292,14 +294,14 @@ impl Renderer {
                 .cloned()
                 .collect();
 
-            // Render cursor: invert fg/bg at cursor position using theme cursor color
-            if content.cursor_row < clipped_rows.len() {
+            // Render cursor as a blinking underline at cursor position
+            if self.cursor_visible && content.cursor_row < clipped_rows.len() {
                 let row = &mut clipped_rows[content.cursor_row];
                 if content.cursor_col < row.len() {
                     let cell = &mut row[content.cursor_col];
                     let cursor_color = self.theme.colors.cursor.to_rgb();
-                    cell.bg = cursor_color;
-                    cell.fg = self.theme.colors.background.to_rgb();
+                    cell.c = '\u{2581}'; // ▁ lower one eighth block (underline cursor)
+                    cell.fg = cursor_color;
                 }
             }
 

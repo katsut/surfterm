@@ -80,6 +80,10 @@ struct App {
     /// File watcher for theme hot-reload (kept alive).
     #[allow(dead_code)]
     theme_watcher: Option<notify::RecommendedWatcher>,
+    /// Cursor blink state: visible when true.
+    cursor_visible: bool,
+    /// Last cursor blink toggle time.
+    cursor_blink_at: std::time::Instant,
 }
 
 impl App {
@@ -99,6 +103,8 @@ impl App {
             app_menu: None,
             config_dir: std::path::PathBuf::new(),
             theme_watcher: None,
+            cursor_visible: true,
+            cursor_blink_at: std::time::Instant::now(),
         }
     }
 
@@ -663,7 +669,15 @@ impl ApplicationHandler<AppEvent> for App {
                 }
             }
             WindowEvent::RedrawRequested => {
+                // Cursor blink: toggle every 500ms
+                let now = std::time::Instant::now();
+                if now.duration_since(self.cursor_blink_at).as_millis() >= 500 {
+                    self.cursor_visible = !self.cursor_visible;
+                    self.cursor_blink_at = now;
+                }
+
                 if let Some(renderer) = self.renderer.as_mut() {
+                    renderer.cursor_visible = self.cursor_visible;
                     if let Some(active_id) = self.active_session {
                         if let Some(pipeline) = self.sessions.get(&active_id) {
                             let content = pipeline.terminal.content();
@@ -676,6 +690,11 @@ impl ApplicationHandler<AppEvent> for App {
                     } else if let Err(e) = renderer.render() {
                         tracing::error!("Render error: {e}");
                     }
+                }
+
+                // Schedule next blink redraw
+                if let Some(window) = self.window.as_ref() {
+                    window.request_redraw();
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
@@ -710,6 +729,10 @@ impl ApplicationHandler<AppEvent> for App {
                         }
                     }
                 }
+
+                // Reset cursor blink on any keypress (cursor stays visible right after typing)
+                self.cursor_visible = true;
+                self.cursor_blink_at = std::time::Instant::now();
 
                 let action = self.input_handler.handle_key(&event);
                 match action {
