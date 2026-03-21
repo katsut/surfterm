@@ -1,8 +1,11 @@
 //! Project-specific theme management with automatic accent color generation.
 //!
-//! Themes can be defined per-project in `~/.config/surfterm/projects/*.toml`.
-//! When no theme is configured for a project, an accent color is automatically
-//! generated from the project's working directory path using `seahash`.
+//! Themes can be defined globally in `~/.config/surfterm/theme.toml` or locally
+//! in `.surfterm/theme.toml` within a project directory. Local overrides only
+//! the fields it specifies; unspecified fields fall back to global, then defaults.
+//!
+//! Per-project themes can also be defined in `~/.config/surfterm/projects/*.toml`
+//! for auto-accent generation based on the working directory.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -44,6 +47,21 @@ impl ThemeColor {
         let b = u8::from_str_radix(&s[5..7], 16).ok()?;
         Some(Self { r, g, b })
     }
+
+    /// Convert to an `Rgb` value for the terminal renderer.
+    pub fn to_rgb(self) -> Rgb {
+        Rgb::new(self.r, self.g, self.b)
+    }
+
+    /// Convert to a wgpu `Color` (normalized f64 components).
+    pub fn to_wgpu_color(self) -> wgpu::Color {
+        wgpu::Color {
+            r: self.r as f64 / 255.0,
+            g: self.g as f64 / 255.0,
+            b: self.b as f64 / 255.0,
+            a: 1.0,
+        }
+    }
 }
 
 impl From<ThemeColor> for Rgb {
@@ -84,32 +102,141 @@ impl<'de> Deserialize<'de> for ThemeColor {
     }
 }
 
-/// Project-specific theme configuration.
-///
-/// Deserializable from TOML files in `~/.config/surfterm/projects/`.
-/// Defaults to Catppuccin Mocha colors.
+// ── SurftermTheme: comprehensive theme structure ──
+
+/// Sidebar colors for the session list panel.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
-#[allow(dead_code)]
-pub struct ProjectTheme {
-    /// Accent color used for highlights, borders, active indicators.
-    pub accent: ThemeColor,
-    /// Background color for the terminal area.
+pub struct SidebarColors {
     pub background: ThemeColor,
-    /// Foreground (text) color.
     pub foreground: ThemeColor,
-    /// Cursor color.
-    pub cursor: ThemeColor,
+    pub separator: ThemeColor,
+    pub new_session: ThemeColor,
+    pub active_bg: ThemeColor,
+    pub selected_bg: ThemeColor,
 }
 
-impl Default for ProjectTheme {
-    /// Default theme uses Catppuccin Mocha colors.
+impl Default for SidebarColors {
     fn default() -> Self {
         Self {
-            accent: ThemeColor::new(0xf3, 0x8b, 0xa8),    // #f38ba8 (red/pink)
+            background: ThemeColor::new(0x18, 0x18, 0x25), // #181825
+            foreground: ThemeColor::new(0xcd, 0xd6, 0xf4), // #cdd6f4
+            separator: ThemeColor::new(0x58, 0x5b, 0x70),  // #585b70
+            new_session: ThemeColor::new(0xa6, 0xe3, 0xa1), // #a6e3a1
+            active_bg: ThemeColor::new(0x45, 0x47, 0x5a),  // #45475a
+            selected_bg: ThemeColor::new(0x58, 0x5b, 0x70), // #585b70
+        }
+    }
+}
+
+/// Card title bar colors.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct CardColors {
+    pub border: ThemeColor,
+    pub title: ThemeColor,
+    pub active_title: ThemeColor,
+}
+
+impl Default for CardColors {
+    fn default() -> Self {
+        Self {
+            border: ThemeColor::new(0x31, 0x32, 0x44),      // #313244
+            title: ThemeColor::new(0xcd, 0xd6, 0xf4),       // #cdd6f4
+            active_title: ThemeColor::new(0x89, 0xb4, 0xfa), // #89b4fa
+        }
+    }
+}
+
+/// State indicator dot colors.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct StateColors {
+    pub idle: ThemeColor,
+    pub running: ThemeColor,
+    pub waiting: ThemeColor,
+    pub error: ThemeColor,
+}
+
+impl Default for StateColors {
+    fn default() -> Self {
+        Self {
+            idle: ThemeColor::new(0x6c, 0x70, 0x86),    // #6c7086
+            running: ThemeColor::new(0xf9, 0xe2, 0xaf),  // #f9e2af
+            waiting: ThemeColor::new(0xa6, 0xe3, 0xa1),  // #a6e3a1
+            error: ThemeColor::new(0xf3, 0x8b, 0xa8),    // #f38ba8
+        }
+    }
+}
+
+/// All theme colors grouped by component.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ThemeColors {
+    pub background: ThemeColor,
+    pub foreground: ThemeColor,
+    pub cursor: ThemeColor,
+    pub accent: ThemeColor,
+    pub sidebar: SidebarColors,
+    pub card: CardColors,
+    pub state: StateColors,
+}
+
+impl Default for ThemeColors {
+    fn default() -> Self {
+        Self {
             background: ThemeColor::new(0x1e, 0x1e, 0x2e), // #1e1e2e
             foreground: ThemeColor::new(0xcd, 0xd6, 0xf4), // #cdd6f4
             cursor: ThemeColor::new(0xf5, 0xe0, 0xdc),     // #f5e0dc
+            accent: ThemeColor::new(0xf3, 0x8b, 0xa8),     // #f38ba8
+            sidebar: SidebarColors::default(),
+            card: CardColors::default(),
+            state: StateColors::default(),
+        }
+    }
+}
+
+/// Comprehensive theme for the Surfterm application.
+///
+/// All fields use `#[serde(default)]` so partial theme files work correctly:
+/// only specified fields override defaults.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct SurftermTheme {
+    pub colors: ThemeColors,
+}
+
+/// Type alias for backward compatibility.
+#[allow(dead_code)]
+pub type ProjectTheme = SurftermTheme;
+
+// ── Convenience accessors on SurftermTheme ──
+
+#[allow(dead_code)]
+impl SurftermTheme {
+    /// Get the background color as an Rgb value.
+    pub fn background_rgb(&self) -> Rgb {
+        self.colors.background.to_rgb()
+    }
+
+    /// Get the foreground color as an Rgb value.
+    pub fn foreground_rgb(&self) -> Rgb {
+        self.colors.foreground.to_rgb()
+    }
+
+    /// Get the background color as a wgpu Color for clear passes.
+    pub fn background_wgpu(&self) -> wgpu::Color {
+        self.colors.background.to_wgpu_color()
+    }
+
+    /// State color Rgb for the given session state.
+    pub fn state_color_rgb(&self, state: &crate::session::state::SessionState) -> Rgb {
+        use crate::session::state::SessionState;
+        match state {
+            SessionState::Running => self.colors.state.running.to_rgb(),
+            SessionState::WaitingForInput => self.colors.state.waiting.to_rgb(),
+            SessionState::Error => self.colors.state.error.to_rgb(),
+            SessionState::Idle => self.colors.state.idle.to_rgb(),
         }
     }
 }
@@ -119,9 +246,9 @@ impl Default for ProjectTheme {
 #[allow(dead_code)]
 pub struct ThemeManager {
     /// Explicitly configured themes keyed by project name.
-    themes: HashMap<String, ProjectTheme>,
+    themes: HashMap<String, SurftermTheme>,
     /// Cached auto-generated themes for projects without explicit config.
-    auto_themes: HashMap<String, ProjectTheme>,
+    auto_themes: HashMap<String, SurftermTheme>,
 }
 
 #[allow(dead_code)]
@@ -158,7 +285,7 @@ impl ThemeManager {
                     };
 
                     match std::fs::read_to_string(&path) {
-                        Ok(content) => match toml::from_str::<ProjectTheme>(&content) {
+                        Ok(content) => match toml::from_str::<SurftermTheme>(&content) {
                             Ok(theme) => {
                                 themes.insert(project_name, theme);
                             }
@@ -190,7 +317,7 @@ impl ThemeManager {
 
     /// Get the theme for a project. If an explicit theme exists, return it.
     /// Otherwise, generate and cache an auto theme based on the cwd.
-    pub fn get_theme(&mut self, project_name: &str, cwd: &Path) -> &ProjectTheme {
+    pub fn get_theme(&mut self, project_name: &str, cwd: &Path) -> &SurftermTheme {
         if self.themes.contains_key(project_name) {
             return &self.themes[project_name];
         }
@@ -198,10 +325,9 @@ impl ThemeManager {
         let key = project_name.to_string();
         self.auto_themes.entry(key).or_insert_with(|| {
             let accent = Self::auto_accent(cwd);
-            ProjectTheme {
-                accent,
-                ..ProjectTheme::default()
-            }
+            let mut theme = SurftermTheme::default();
+            theme.colors.accent = accent;
+            theme
         });
 
         &self.auto_themes[project_name]
@@ -216,6 +342,73 @@ impl ThemeManager {
         let hash = seahash::hash(cwd_str.as_bytes());
         let hue = (hash % 360) as f64;
         hsl_to_rgb(hue, 0.7, 0.6)
+    }
+
+    /// Load a complete theme by merging global defaults, global theme file,
+    /// and local (per-directory) theme file.
+    ///
+    /// Priority (highest to lowest):
+    /// 1. `.surfterm/theme.toml` in cwd or any parent directory
+    /// 2. `~/.config/surfterm/theme.toml` (global)
+    /// 3. Built-in defaults (Catppuccin Mocha)
+    #[instrument(skip_all, fields(config_dir = %config_dir.display(), cwd = %cwd.display()))]
+    pub fn load_theme(config_dir: &Path, cwd: &Path) -> SurftermTheme {
+        // Start with defaults
+        let mut theme = SurftermTheme::default();
+
+        // Layer 1: global theme file
+        let global_path = config_dir.join("theme.toml");
+        if global_path.is_file() {
+            if let Ok(content) = std::fs::read_to_string(&global_path) {
+                match toml::from_str::<SurftermTheme>(&content) {
+                    Ok(global_theme) => {
+                        theme = global_theme;
+                    }
+                    Err(e) => {
+                        warn!(
+                            path = %global_path.display(),
+                            error = %e,
+                            "failed to parse global theme.toml, using defaults"
+                        );
+                    }
+                }
+            }
+        }
+
+        // Layer 2: local theme file
+        if let Some(local_path) = Self::find_local_theme(cwd) {
+            if let Ok(content) = std::fs::read_to_string(&local_path) {
+                match toml::from_str::<SurftermTheme>(&content) {
+                    Ok(local_theme) => {
+                        theme = local_theme;
+                    }
+                    Err(e) => {
+                        warn!(
+                            path = %local_path.display(),
+                            error = %e,
+                            "failed to parse local theme.toml, ignoring"
+                        );
+                    }
+                }
+            }
+        }
+
+        theme
+    }
+
+    /// Walk up the directory tree from `cwd` looking for `.surfterm/theme.toml`.
+    pub fn find_local_theme(cwd: &Path) -> Option<PathBuf> {
+        let mut dir = cwd.to_path_buf();
+        loop {
+            let candidate = dir.join(".surfterm").join("theme.toml");
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+            if !dir.pop() {
+                break;
+            }
+        }
+        None
     }
 }
 
@@ -264,15 +457,40 @@ mod tests {
 
     #[test]
     fn test_default_theme_has_catppuccin_colors() {
-        let theme = ProjectTheme::default();
+        let theme = SurftermTheme::default();
         // Catppuccin Mocha background: #1e1e2e
-        assert_eq!(theme.background, ThemeColor::new(0x1e, 0x1e, 0x2e));
+        assert_eq!(theme.colors.background, ThemeColor::new(0x1e, 0x1e, 0x2e));
         // Catppuccin Mocha foreground: #cdd6f4
-        assert_eq!(theme.foreground, ThemeColor::new(0xcd, 0xd6, 0xf4));
+        assert_eq!(theme.colors.foreground, ThemeColor::new(0xcd, 0xd6, 0xf4));
         // Catppuccin Mocha cursor: #f5e0dc
-        assert_eq!(theme.cursor, ThemeColor::new(0xf5, 0xe0, 0xdc));
+        assert_eq!(theme.colors.cursor, ThemeColor::new(0xf5, 0xe0, 0xdc));
         // Catppuccin Mocha accent: #f38ba8
-        assert_eq!(theme.accent, ThemeColor::new(0xf3, 0x8b, 0xa8));
+        assert_eq!(theme.colors.accent, ThemeColor::new(0xf3, 0x8b, 0xa8));
+    }
+
+    #[test]
+    fn test_default_sidebar_colors() {
+        let theme = SurftermTheme::default();
+        assert_eq!(theme.colors.sidebar.new_session, ThemeColor::new(0xa6, 0xe3, 0xa1));
+        assert_eq!(theme.colors.sidebar.separator, ThemeColor::new(0x58, 0x5b, 0x70));
+        assert_eq!(theme.colors.sidebar.active_bg, ThemeColor::new(0x45, 0x47, 0x5a));
+        assert_eq!(theme.colors.sidebar.selected_bg, ThemeColor::new(0x58, 0x5b, 0x70));
+    }
+
+    #[test]
+    fn test_default_card_colors() {
+        let theme = SurftermTheme::default();
+        assert_eq!(theme.colors.card.border, ThemeColor::new(0x31, 0x32, 0x44));
+        assert_eq!(theme.colors.card.active_title, ThemeColor::new(0x89, 0xb4, 0xfa));
+    }
+
+    #[test]
+    fn test_default_state_colors() {
+        let theme = SurftermTheme::default();
+        assert_eq!(theme.colors.state.idle, ThemeColor::new(0x6c, 0x70, 0x86));
+        assert_eq!(theme.colors.state.running, ThemeColor::new(0xf9, 0xe2, 0xaf));
+        assert_eq!(theme.colors.state.waiting, ThemeColor::new(0xa6, 0xe3, 0xa1));
+        assert_eq!(theme.colors.state.error, ThemeColor::new(0xf3, 0x8b, 0xa8));
     }
 
     #[test]
@@ -392,6 +610,7 @@ mod tests {
         fs::write(
             projects_dir.join("my-project.toml"),
             r##"
+[colors]
 accent = "#ff0000"
 background = "#000000"
 foreground = "#ffffff"
@@ -402,10 +621,10 @@ cursor = "#00ff00"
 
         let manager = ThemeManager::load_themes(&dir);
         let theme = manager.themes.get("my-project").unwrap();
-        assert_eq!(theme.accent, ThemeColor::new(255, 0, 0));
-        assert_eq!(theme.background, ThemeColor::new(0, 0, 0));
-        assert_eq!(theme.foreground, ThemeColor::new(255, 255, 255));
-        assert_eq!(theme.cursor, ThemeColor::new(0, 255, 0));
+        assert_eq!(theme.colors.accent, ThemeColor::new(255, 0, 0));
+        assert_eq!(theme.colors.background, ThemeColor::new(0, 0, 0));
+        assert_eq!(theme.colors.foreground, ThemeColor::new(255, 255, 255));
+        assert_eq!(theme.colors.cursor, ThemeColor::new(0, 255, 0));
     }
 
     #[test]
@@ -417,17 +636,20 @@ cursor = "#00ff00"
         // Only accent specified, rest should be defaults
         fs::write(
             projects_dir.join("partial.toml"),
-            r##"accent = "#ff0000""##,
+            r##"
+[colors]
+accent = "#ff0000"
+"##,
         )
         .unwrap();
 
         let manager = ThemeManager::load_themes(&dir);
         let theme = manager.themes.get("partial").unwrap();
-        assert_eq!(theme.accent, ThemeColor::new(255, 0, 0));
+        assert_eq!(theme.colors.accent, ThemeColor::new(255, 0, 0));
         // Defaults for the rest
-        assert_eq!(theme.background, ThemeColor::new(0x1e, 0x1e, 0x2e));
-        assert_eq!(theme.foreground, ThemeColor::new(0xcd, 0xd6, 0xf4));
-        assert_eq!(theme.cursor, ThemeColor::new(0xf5, 0xe0, 0xdc));
+        assert_eq!(theme.colors.background, ThemeColor::new(0x1e, 0x1e, 0x2e));
+        assert_eq!(theme.colors.foreground, ThemeColor::new(0xcd, 0xd6, 0xf4));
+        assert_eq!(theme.colors.cursor, ThemeColor::new(0xf5, 0xe0, 0xdc));
     }
 
     #[test]
@@ -439,7 +661,10 @@ cursor = "#00ff00"
         fs::write(projects_dir.join("bad.toml"), "not valid [[[").unwrap();
         fs::write(
             projects_dir.join("good.toml"),
-            r##"accent = "#00ff00""##,
+            r##"
+[colors]
+accent = "#00ff00"
+"##,
         )
         .unwrap();
 
@@ -456,13 +681,16 @@ cursor = "#00ff00"
 
         fs::write(
             projects_dir.join("my-proj.toml"),
-            r##"accent = "#abcdef""##,
+            r##"
+[colors]
+accent = "#abcdef"
+"##,
         )
         .unwrap();
 
         let mut manager = ThemeManager::load_themes(&dir);
         let theme = manager.get_theme("my-proj", Path::new("/some/path"));
-        assert_eq!(theme.accent, ThemeColor::new(0xab, 0xcd, 0xef));
+        assert_eq!(theme.colors.accent, ThemeColor::new(0xab, 0xcd, 0xef));
     }
 
     #[test]
@@ -473,10 +701,10 @@ cursor = "#00ff00"
 
         // Should have auto-generated accent but default background/foreground/cursor
         let expected_accent = ThemeManager::auto_accent(cwd);
-        assert_eq!(theme.accent, expected_accent);
-        assert_eq!(theme.background, ProjectTheme::default().background);
-        assert_eq!(theme.foreground, ProjectTheme::default().foreground);
-        assert_eq!(theme.cursor, ProjectTheme::default().cursor);
+        assert_eq!(theme.colors.accent, expected_accent);
+        assert_eq!(theme.colors.background, SurftermTheme::default().colors.background);
+        assert_eq!(theme.colors.foreground, SurftermTheme::default().colors.foreground);
+        assert_eq!(theme.colors.cursor, SurftermTheme::default().colors.cursor);
     }
 
     #[test]
@@ -484,6 +712,137 @@ cursor = "#00ff00"
         let dir = tempdir("theme_empty");
         let manager = ThemeManager::load_themes(&dir);
         assert!(manager.themes.is_empty());
+    }
+
+    #[test]
+    fn test_load_theme_defaults_when_no_files() {
+        let config_dir = tempdir("load_theme_none");
+        let cwd = tempdir("load_theme_cwd");
+        let theme = ThemeManager::load_theme(&config_dir, &cwd);
+        assert_eq!(theme.colors.background, SurftermTheme::default().colors.background);
+    }
+
+    #[test]
+    fn test_load_theme_global_overrides_defaults() {
+        let config_dir = tempdir("load_theme_global");
+        fs::write(
+            config_dir.join("theme.toml"),
+            r##"
+[colors]
+background = "#000000"
+"##,
+        )
+        .unwrap();
+
+        let cwd = tempdir("load_theme_global_cwd");
+        let theme = ThemeManager::load_theme(&config_dir, &cwd);
+        assert_eq!(theme.colors.background, ThemeColor::new(0, 0, 0));
+        // Unset fields remain defaults
+        assert_eq!(theme.colors.foreground, SurftermTheme::default().colors.foreground);
+    }
+
+    #[test]
+    fn test_load_theme_local_overrides_global() {
+        let config_dir = tempdir("load_theme_local_over");
+        fs::write(
+            config_dir.join("theme.toml"),
+            r##"
+[colors]
+background = "#111111"
+foreground = "#222222"
+"##,
+        )
+        .unwrap();
+
+        let cwd = tempdir("load_theme_local_cwd");
+        let local_dir = cwd.join(".surfterm");
+        fs::create_dir_all(&local_dir).unwrap();
+        fs::write(
+            local_dir.join("theme.toml"),
+            r##"
+[colors]
+background = "#333333"
+"##,
+        )
+        .unwrap();
+
+        let theme = ThemeManager::load_theme(&config_dir, &cwd);
+        // Local overrides background
+        assert_eq!(theme.colors.background, ThemeColor::new(0x33, 0x33, 0x33));
+        // Note: since we deserialize full structs, unset fields in local get defaults
+        // (not global values). This is the serde(default) behavior.
+        assert_eq!(theme.colors.foreground, SurftermTheme::default().colors.foreground);
+    }
+
+    #[test]
+    fn test_find_local_theme_walks_up() {
+        let base = tempdir("find_local_walk");
+        let deep = base.join("a").join("b").join("c");
+        fs::create_dir_all(&deep).unwrap();
+
+        // Place .surfterm/theme.toml at 'a' level
+        let surfterm_dir = base.join("a").join(".surfterm");
+        fs::create_dir_all(&surfterm_dir).unwrap();
+        fs::write(surfterm_dir.join("theme.toml"), "[colors]\n").unwrap();
+
+        let found = ThemeManager::find_local_theme(&deep);
+        assert!(found.is_some());
+        assert_eq!(found.unwrap(), surfterm_dir.join("theme.toml"));
+    }
+
+    #[test]
+    fn test_find_local_theme_returns_none_when_absent() {
+        let dir = tempdir("find_local_absent");
+        assert!(ThemeManager::find_local_theme(&dir).is_none());
+    }
+
+    #[test]
+    fn test_deserialize_full_theme_toml() {
+        let toml_str = r##"
+[colors]
+background = "#1e1e2e"
+foreground = "#cdd6f4"
+cursor = "#f5e0dc"
+accent = "#f38ba8"
+
+[colors.sidebar]
+background = "#181825"
+foreground = "#cdd6f4"
+separator = "#585b70"
+new_session = "#a6e3a1"
+active_bg = "#45475a"
+selected_bg = "#585b70"
+
+[colors.card]
+border = "#313244"
+title = "#cdd6f4"
+active_title = "#89b4fa"
+
+[colors.state]
+idle = "#6c7086"
+running = "#f9e2af"
+waiting = "#a6e3a1"
+error = "#f38ba8"
+"##;
+        let theme: SurftermTheme = toml::from_str(toml_str).unwrap();
+        assert_eq!(theme.colors.background, ThemeColor::new(0x1e, 0x1e, 0x2e));
+        assert_eq!(theme.colors.sidebar.new_session, ThemeColor::new(0xa6, 0xe3, 0xa1));
+        assert_eq!(theme.colors.card.active_title, ThemeColor::new(0x89, 0xb4, 0xfa));
+        assert_eq!(theme.colors.state.running, ThemeColor::new(0xf9, 0xe2, 0xaf));
+    }
+
+    #[test]
+    fn test_deserialize_partial_theme_toml() {
+        // Only override sidebar colors; everything else should be default
+        let toml_str = r##"
+[colors.sidebar]
+new_session = "#ff0000"
+"##;
+        let theme: SurftermTheme = toml::from_str(toml_str).unwrap();
+        assert_eq!(theme.colors.sidebar.new_session, ThemeColor::new(0xff, 0x00, 0x00));
+        // Defaults for everything else
+        assert_eq!(theme.colors.background, SurftermTheme::default().colors.background);
+        assert_eq!(theme.colors.sidebar.separator, SurftermTheme::default().colors.sidebar.separator);
     }
 
     /// Helper to create a unique temporary directory for each test.

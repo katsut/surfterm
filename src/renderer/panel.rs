@@ -4,79 +4,104 @@
 //! into `TerminalCell` rows for rendering. `DisplayMode` controls whether the
 //! split panel view or raw VT output is shown.
 
+use crate::config::theme::SurftermTheme;
 use crate::layer::Layer;
 use crate::session::state::SessionState;
 use crate::session::terminal::{Rgb, TerminalCell};
 use crate::session::SessionId;
 
-/// User input foreground color: light green (#a6e3a1, Catppuccin green).
-const USER_INPUT_FG: Rgb = Rgb::new(0xa6, 0xe3, 0xa1);
+/// Resolved panel colors derived from a `SurftermTheme`.
+///
+/// This is an intermediate struct so that rendering code does not need to
+/// reference the full theme. Built once per frame (or when the theme changes).
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct PanelColors {
+    // Base colors
+    pub background: Rgb,
+    pub foreground: Rgb,
 
-/// AI response foreground color: white (#cdd6f4, Catppuccin text).
-const AI_RESPONSE_FG: Rgb = Rgb::new(0xcd, 0xd6, 0xf4);
+    // State colors
+    pub state_running: Rgb,
+    pub state_waiting: Rgb,
+    pub state_error: Rgb,
+    pub state_idle: Rgb,
 
-/// Default background color (transparent/black — actual bg is rendered by the clear pass).
-const DEFAULT_BG: Rgb = Rgb::new(0x1e, 0x1e, 0x2e);
+    // Side panel
+    pub side_new_session: Rgb,
+    pub side_separator: Rgb,
+    pub side_active_bg: Rgb,
+    pub side_selected_bg: Rgb,
+    pub side_text: Rgb,
 
-// ── State Panel colors ──
+    // Card
+    pub card_border: Rgb,
+    pub card_title_accent: Rgb,
+    pub card_bg_title: Rgb,
 
-/// Header / separator dim color (#585b70, Catppuccin surface2).
-const STATE_HEADER_FG: Rgb = Rgb::new(0x58, 0x5b, 0x70);
+    // State panel extras (derived from foreground)
+    pub state_header: Rgb,
+    pub state_tool: Rgb,
+    pub state_info: Rgb,
+    pub state_dim: Rgb,
 
-/// Running indicator: yellow (#f9e2af, Catppuccin yellow).
-const STATE_RUNNING_FG: Rgb = Rgb::new(0xf9, 0xe2, 0xaf);
+    // Message panel
+    pub user_input: Rgb,
+    pub ai_response: Rgb,
 
-/// WaitingForInput indicator: green (#a6e3a1, Catppuccin green).
-const STATE_WAITING_FG: Rgb = Rgb::new(0xa6, 0xe3, 0xa1);
+    // Session list
+    pub session_selected_bg: Rgb,
+}
 
-/// Error indicator: red (#f38ba8, Catppuccin red).
-const STATE_ERROR_FG: Rgb = Rgb::new(0xf3, 0x8b, 0xa8);
+impl PanelColors {
+    /// Derive panel colors from a `SurftermTheme`.
+    pub fn from_theme(theme: &SurftermTheme) -> Self {
+        Self {
+            background: theme.colors.background.to_rgb(),
+            foreground: theme.colors.foreground.to_rgb(),
 
-/// Idle indicator: gray (#6c7086, Catppuccin overlay0).
-const STATE_IDLE_FG: Rgb = Rgb::new(0x6c, 0x70, 0x86);
+            state_running: theme.colors.state.running.to_rgb(),
+            state_waiting: theme.colors.state.waiting.to_rgb(),
+            state_error: theme.colors.state.error.to_rgb(),
+            state_idle: theme.colors.state.idle.to_rgb(),
 
-/// Tool name: cyan (#89dceb, Catppuccin sky).
-const STATE_TOOL_FG: Rgb = Rgb::new(0x89, 0xdc, 0xeb);
+            side_new_session: theme.colors.sidebar.new_session.to_rgb(),
+            side_separator: theme.colors.sidebar.separator.to_rgb(),
+            side_active_bg: theme.colors.sidebar.active_bg.to_rgb(),
+            side_selected_bg: theme.colors.sidebar.selected_bg.to_rgb(),
+            side_text: theme.colors.sidebar.foreground.to_rgb(),
 
-/// Normal info text: white (#cdd6f4, Catppuccin text).
-const STATE_INFO_FG: Rgb = Rgb::new(0xcd, 0xd6, 0xf4);
+            card_border: theme.colors.card.border.to_rgb(),
+            card_title_accent: theme.colors.card.active_title.to_rgb(),
+            card_bg_title: theme.colors.card.title.to_rgb(),
 
-/// Dim state lines: (#a6adc8, Catppuccin subtext0).
-const STATE_DIM_FG: Rgb = Rgb::new(0xa6, 0xad, 0xc8);
+            // These are derived / kept as Catppuccin convention from the theme's foreground
+            state_header: theme.colors.sidebar.separator.to_rgb(), // #585b70
+            state_tool: Rgb::new(0x89, 0xdc, 0xeb), // sky — not in theme, keep as-is
+            state_info: theme.colors.foreground.to_rgb(),
+            state_dim: Rgb::new(0xa6, 0xad, 0xc8), // subtext0 — not in theme
 
-// ── Side Panel colors ──
+            user_input: theme.colors.state.waiting.to_rgb(), // green
+            ai_response: theme.colors.foreground.to_rgb(),
 
-/// New session button color: green (#a6e3a1, Catppuccin green).
-const SIDE_NEW_SESSION_FG: Rgb = Rgb::new(0xa6, 0xe3, 0xa1);
+            session_selected_bg: theme.colors.sidebar.active_bg.to_rgb(),
+        }
+    }
+}
 
-/// Separator dim color for side panel (#585b70, Catppuccin surface2).
-const SIDE_SEPARATOR_FG: Rgb = Rgb::new(0x58, 0x5b, 0x70);
+impl Default for PanelColors {
+    fn default() -> Self {
+        Self::from_theme(&SurftermTheme::default())
+    }
+}
 
-/// Active session background (#45475a, Catppuccin surface1).
-const SIDE_ACTIVE_BG: Rgb = Rgb::new(0x45, 0x47, 0x5a);
-
-/// Selected (focused) session background (#585b70, Catppuccin surface2).
-const SIDE_SELECTED_BG: Rgb = Rgb::new(0x58, 0x5b, 0x70);
-
-/// State dot color: Running = yellow (#f9e2af).
-const SIDE_DOT_RUNNING: Rgb = Rgb::new(0xf9, 0xe2, 0xaf);
-
-/// State dot color: WaitingForInput = green (#a6e3a1).
-const SIDE_DOT_WAITING: Rgb = Rgb::new(0xa6, 0xe3, 0xa1);
-
-/// State dot color: Error = red (#f38ba8).
-const SIDE_DOT_ERROR: Rgb = Rgb::new(0xf3, 0x8b, 0xa8);
-
-/// State dot color: Idle = gray (#6c7086).
-const SIDE_DOT_IDLE: Rgb = Rgb::new(0x6c, 0x70, 0x86);
-
-/// Normal text in side panel (#cdd6f4, Catppuccin text).
-const SIDE_TEXT_FG: Rgb = Rgb::new(0xcd, 0xd6, 0xf4);
-
-// ── Session List colors ──
-
-/// Selected entry background (#45475a, Catppuccin surface1).
-const SESSION_SELECTED_BG: Rgb = Rgb::new(0x45, 0x47, 0x5a);
+/// Background card base colors, progressively lighter per layer.
+const CARD_BG_LAYERS: [Rgb; 4] = [
+    Rgb::new(0x25, 0x25, 0x38),
+    Rgb::new(0x2c, 0x2c, 0x42),
+    Rgb::new(0x33, 0x33, 0x4c),
+    Rgb::new(0x3a, 0x3a, 0x56),
+];
 
 /// A single entry in the side panel session list.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -162,6 +187,17 @@ impl SidePanel {
     /// - Row 1: "─────────" separator in dim
     /// - Row 2+: Each session entry with state dot and project name
     pub fn to_terminal_cells(&self, cols: u16, rows: u16, _scale_factor: f32) -> Vec<Vec<TerminalCell>> {
+        self.to_terminal_cells_themed(cols, rows, _scale_factor, &PanelColors::default())
+    }
+
+    /// Render the side panel as terminal cells using the given theme colors.
+    pub fn to_terminal_cells_themed(
+        &self,
+        cols: u16,
+        rows: u16,
+        _scale_factor: f32,
+        colors: &PanelColors,
+    ) -> Vec<Vec<TerminalCell>> {
         if cols == 0 || rows == 0 {
             return Vec::new();
         }
@@ -174,15 +210,15 @@ impl SidePanel {
         {
             let text = "[+ New Session]";
             let bg = if self.selected_index == 0 {
-                SIDE_SELECTED_BG
+                colors.side_selected_bg
             } else {
-                DEFAULT_BG
+                colors.background
             };
             let mut row = Vec::with_capacity(cols);
             for ch in text.chars().take(cols) {
                 row.push(TerminalCell {
                     c: ch,
-                    fg: SIDE_NEW_SESSION_FG,
+                    fg: colors.side_new_session,
                     bg,
                     bold: self.selected_index == 0,
                     italic: false,
@@ -192,7 +228,7 @@ impl SidePanel {
             while row.len() < cols {
                 row.push(TerminalCell {
                     c: ' ',
-                    fg: SIDE_NEW_SESSION_FG,
+                    fg: colors.side_new_session,
                     bg,
                     bold: false,
                     italic: false,
@@ -205,7 +241,7 @@ impl SidePanel {
         // Row 1: separator
         if result.len() < rows {
             let sep: String = "\u{2500}".repeat(cols);
-            result.push(make_row(&sep, cols, SIDE_SEPARATOR_FG));
+            result.push(make_row_colored(&sep, cols, colors.side_separator, colors.background));
         }
 
         // Row 2+: session entries
@@ -218,18 +254,18 @@ impl SidePanel {
             let is_selected = self.selected_index == nav_index;
 
             let dot_fg = match entry.state {
-                SessionState::Running => SIDE_DOT_RUNNING,
-                SessionState::WaitingForInput => SIDE_DOT_WAITING,
-                SessionState::Error => SIDE_DOT_ERROR,
-                SessionState::Idle => SIDE_DOT_IDLE,
+                SessionState::Running => colors.state_running,
+                SessionState::WaitingForInput => colors.state_waiting,
+                SessionState::Error => colors.state_error,
+                SessionState::Idle => colors.state_idle,
             };
 
             let bg = if is_selected {
-                SIDE_SELECTED_BG
+                colors.side_selected_bg
             } else if entry.is_active {
-                SIDE_ACTIVE_BG
+                colors.side_active_bg
             } else {
-                DEFAULT_BG
+                colors.background
             };
 
             // Build: "● name" (truncated to cols)
@@ -240,7 +276,7 @@ impl SidePanel {
 
             let mut row = Vec::with_capacity(cols);
             for (ci, ch) in text.chars().enumerate() {
-                let fg = if ci == 0 { dot_fg } else { SIDE_TEXT_FG };
+                let fg = if ci == 0 { dot_fg } else { colors.side_text };
                 row.push(TerminalCell {
                     c: ch,
                     fg,
@@ -253,7 +289,7 @@ impl SidePanel {
             while row.len() < cols {
                 row.push(TerminalCell {
                     c: ' ',
-                    fg: SIDE_TEXT_FG,
+                    fg: colors.side_text,
                     bg,
                     bold: false,
                     italic: false,
@@ -265,31 +301,12 @@ impl SidePanel {
 
         // Pad remaining rows
         while result.len() < rows {
-            result.push(make_row("", cols, SIDE_SEPARATOR_FG));
+            result.push(make_row_colored("", cols, colors.side_separator, colors.background));
         }
 
         result
     }
 }
-
-// ── Card Stack colors ──
-
-/// Card border color (#313244, Catppuccin surface0).
-const CARD_BORDER_FG: Rgb = Rgb::new(0x31, 0x32, 0x44);
-
-/// Card title bar accent color (#89b4fa, Catppuccin blue).
-const CARD_TITLE_ACCENT_FG: Rgb = Rgb::new(0x89, 0xb4, 0xfa);
-
-/// Background card title text (#cdd6f4, Catppuccin text).
-const CARD_BG_TITLE_FG: Rgb = Rgb::new(0xcd, 0xd6, 0xf4);
-
-/// Background card base colors, progressively lighter per layer.
-const CARD_BG_LAYERS: [Rgb; 4] = [
-    Rgb::new(0x25, 0x25, 0x38),
-    Rgb::new(0x2c, 0x2c, 0x42),
-    Rgb::new(0x33, 0x33, 0x4c),
-    Rgb::new(0x3a, 0x3a, 0x56),
-];
 
 /// Information about a single card in the stack.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -361,12 +378,13 @@ impl CardStack {
         title_fg: Rgb,
         border_fg: Rgb,
         bg: Rgb,
+        colors: &PanelColors,
     ) -> Vec<TerminalCell> {
         let (state_label, state_fg) = match card.state {
-            SessionState::Running => ("Running", SIDE_DOT_RUNNING),
-            SessionState::WaitingForInput => ("Waiting", SIDE_DOT_WAITING),
-            SessionState::Error => ("Error", SIDE_DOT_ERROR),
-            SessionState::Idle => ("Idle", SIDE_DOT_IDLE),
+            SessionState::Running => ("Running", colors.state_running),
+            SessionState::WaitingForInput => ("Waiting", colors.state_waiting),
+            SessionState::Error => ("Error", colors.state_error),
+            SessionState::Idle => ("Idle", colors.state_idle),
         };
 
         // Build: "─ project_name [state] ─────"
@@ -413,25 +431,50 @@ impl CardStack {
         row
     }
 
-    /// Build terminal cells for the active card's title bar.
+    /// Build terminal cells for the active card's title bar (default colors).
     pub fn active_title_bar(&self, cols: usize) -> Option<Vec<TerminalCell>> {
+        let colors = PanelColors::default();
+        self.active_title_bar_themed(cols, &colors)
+    }
+
+    /// Build terminal cells for the active card's title bar using theme colors.
+    pub fn active_title_bar_themed(&self, cols: usize, colors: &PanelColors) -> Option<Vec<TerminalCell>> {
         self.active_card().map(|card| {
-            self.build_title_bar(card, cols, CARD_TITLE_ACCENT_FG, CARD_BORDER_FG, DEFAULT_BG)
+            self.build_title_bar(
+                card,
+                cols,
+                colors.card_title_accent,
+                colors.card_border,
+                colors.background,
+                colors,
+            )
         })
     }
 
-    /// Build terminal cells for background card header rows.
+    /// Build terminal cells for background card header rows (default colors).
+    pub fn background_title_bars(
+        &self,
+        cols: usize,
+        scale_factor: f32,
+        cell_width: f32,
+    ) -> Vec<(usize, Vec<TerminalCell>)> {
+        let colors = PanelColors::default();
+        self.background_title_bars_themed(cols, scale_factor, cell_width, &colors)
+    }
+
+    /// Build terminal cells for background card header rows using theme colors.
     ///
     /// Each background card gets one row. The rows are meant to be rendered
     /// at the bottom of the main area, each progressively offset to the right
     /// to create the stacked card visual.
     ///
     /// Returns: Vec of (left_offset_in_cells, row_cells).
-    pub fn background_title_bars(
+    pub fn background_title_bars_themed(
         &self,
         cols: usize,
         scale_factor: f32,
         cell_width: f32,
+        colors: &PanelColors,
     ) -> Vec<(usize, Vec<TerminalCell>)> {
         let card_offset_px = 20.0 * scale_factor;
         let offset_cells = (card_offset_px / cell_width).ceil() as usize;
@@ -446,9 +489,10 @@ impl CardStack {
                 let row = self.build_title_bar(
                     card,
                     available_cols,
-                    CARD_BG_TITLE_FG,
-                    CARD_BORDER_FG,
+                    colors.card_bg_title,
+                    colors.card_border,
                     bg_color,
+                    colors,
                 );
                 (left_offset, row)
             })
@@ -534,13 +578,23 @@ impl SessionList {
     }
 
     /// Render the session list as terminal cells.
+    pub fn to_terminal_cells(&self, cols: u16, rows: u16) -> Vec<Vec<TerminalCell>> {
+        self.to_terminal_cells_themed(cols, rows, &PanelColors::default())
+    }
+
+    /// Render the session list as terminal cells using theme colors.
     ///
     /// Layout:
     /// - Header: "── Sessions ──"
     /// - Group headers: "Foreground:" / "Background:" / "Pinned:"
     /// - Each entry: `[index] project_name [state]` (pinned entries have `*` prefix)
     /// - Selected entry has highlighted background
-    pub fn to_terminal_cells(&self, cols: u16, rows: u16) -> Vec<Vec<TerminalCell>> {
+    pub fn to_terminal_cells_themed(
+        &self,
+        cols: u16,
+        rows: u16,
+        colors: &PanelColors,
+    ) -> Vec<Vec<TerminalCell>> {
         if cols == 0 || rows == 0 {
             return Vec::new();
         }
@@ -550,7 +604,7 @@ impl SessionList {
         let mut result: Vec<Vec<TerminalCell>> = Vec::with_capacity(rows);
 
         // Header
-        result.push(make_row("── Sessions ──", cols, STATE_HEADER_FG));
+        result.push(make_row_colored("── Sessions ──", cols, colors.state_header, colors.background));
 
         // Collect entries by layer group
         let pinned: Vec<&SessionListEntry> =
@@ -578,7 +632,7 @@ impl SessionList {
                 break;
             }
             // Group header
-            result.push(make_row(group_name, cols, STATE_HEADER_FG));
+            result.push(make_row_colored(group_name, cols, colors.state_header, colors.background));
 
             for entry in group_entries {
                 if result.len() >= rows {
@@ -589,10 +643,10 @@ impl SessionList {
                 flat_index += 1;
 
                 let (state_label, state_fg) = match entry.state {
-                    SessionState::Running => ("Running", STATE_RUNNING_FG),
-                    SessionState::WaitingForInput => ("WaitingForInput", STATE_WAITING_FG),
-                    SessionState::Error => ("Error", STATE_ERROR_FG),
-                    SessionState::Idle => ("Idle", STATE_IDLE_FG),
+                    SessionState::Running => ("Running", colors.state_running),
+                    SessionState::WaitingForInput => ("WaitingForInput", colors.state_waiting),
+                    SessionState::Error => ("Error", colors.state_error),
+                    SessionState::Idle => ("Idle", colors.state_idle),
                 };
 
                 let pin_marker = if entry.layer == Layer::Pinned { "* " } else { "  " };
@@ -602,9 +656,9 @@ impl SessionList {
                 );
 
                 let bg = if is_selected {
-                    SESSION_SELECTED_BG
+                    colors.session_selected_bg
                 } else {
-                    DEFAULT_BG
+                    colors.background
                 };
 
                 let mut row = Vec::with_capacity(cols);
@@ -634,7 +688,7 @@ impl SessionList {
 
         // Pad remaining rows
         while result.len() < rows {
-            result.push(make_row("", cols, STATE_DIM_FG));
+            result.push(make_row_colored("", cols, colors.state_dim, colors.background));
         }
 
         result
@@ -710,12 +764,21 @@ impl MessagePanel {
         }
     }
 
-    /// Convert the message history into a grid of `TerminalCell` rows suitable
-    /// for rendering.
+    /// Convert the message history into a grid of `TerminalCell` rows (default colors).
+    pub fn to_terminal_cells(&self, cols: u16, rows: u16) -> Vec<Vec<TerminalCell>> {
+        self.to_terminal_cells_themed(cols, rows, &PanelColors::default())
+    }
+
+    /// Convert the message history into a grid of `TerminalCell` rows using theme colors.
     ///
     /// Long lines are wrapped at `cols` characters. The result is clipped to
     /// `rows` visible lines starting from `scroll_offset`.
-    pub fn to_terminal_cells(&self, cols: u16, rows: u16) -> Vec<Vec<TerminalCell>> {
+    pub fn to_terminal_cells_themed(
+        &self,
+        cols: u16,
+        rows: u16,
+        colors: &PanelColors,
+    ) -> Vec<Vec<TerminalCell>> {
         if cols == 0 || rows == 0 {
             return Vec::new();
         }
@@ -757,13 +820,13 @@ impl MessagePanel {
         // Convert to TerminalCell rows.
         let mut result = Vec::with_capacity(rows);
         for (line, is_user) in &visible {
-            let fg = if *is_user { USER_INPUT_FG } else { AI_RESPONSE_FG };
+            let fg = if *is_user { colors.user_input } else { colors.ai_response };
             let mut row = Vec::with_capacity(cols);
             for ch in line.chars().take(cols) {
                 row.push(TerminalCell {
                     c: ch,
                     fg,
-                    bg: DEFAULT_BG,
+                    bg: colors.background,
                     bold: false,
                     italic: false,
                     underline: false,
@@ -774,7 +837,7 @@ impl MessagePanel {
                 row.push(TerminalCell {
                     c: ' ',
                     fg,
-                    bg: DEFAULT_BG,
+                    bg: colors.background,
                     bold: false,
                     italic: false,
                     underline: false,
@@ -789,8 +852,8 @@ impl MessagePanel {
             for _ in 0..cols {
                 row.push(TerminalCell {
                     c: ' ',
-                    fg: AI_RESPONSE_FG,
-                    bg: DEFAULT_BG,
+                    fg: colors.ai_response,
+                    bg: colors.background,
                     bold: false,
                     italic: false,
                     underline: false,
@@ -880,8 +943,18 @@ impl StatePanel {
         }
     }
 
-    /// Render state panel content as terminal cells.
+    /// Render state panel content as terminal cells (default colors).
     pub fn to_terminal_cells(&self, cols: u16, rows: u16) -> Vec<Vec<TerminalCell>> {
+        self.to_terminal_cells_themed(cols, rows, &PanelColors::default())
+    }
+
+    /// Render state panel content as terminal cells using theme colors.
+    pub fn to_terminal_cells_themed(
+        &self,
+        cols: u16,
+        rows: u16,
+        colors: &PanelColors,
+    ) -> Vec<Vec<TerminalCell>> {
         if cols == 0 || rows == 0 {
             return Vec::new();
         }
@@ -891,17 +964,17 @@ impl StatePanel {
         let mut result: Vec<Vec<TerminalCell>> = Vec::with_capacity(rows);
 
         // Row 0: header
-        result.push(make_row("── State ──", cols, STATE_HEADER_FG));
+        result.push(make_row_colored("── State ──", cols, colors.state_header, colors.background));
 
         // Row 1: state indicator
         if result.len() < rows {
             let (label, fg) = match self.session_state {
-                SessionState::Running => ("● Running", STATE_RUNNING_FG),
-                SessionState::WaitingForInput => ("● WaitingForInput", STATE_WAITING_FG),
-                SessionState::Error => ("● Error", STATE_ERROR_FG),
-                SessionState::Idle => ("● Idle", STATE_IDLE_FG),
+                SessionState::Running => ("● Running", colors.state_running),
+                SessionState::WaitingForInput => ("● WaitingForInput", colors.state_waiting),
+                SessionState::Error => ("● Error", colors.state_error),
+                SessionState::Idle => ("● Idle", colors.state_idle),
             };
-            result.push(make_row(label, cols, fg));
+            result.push(make_row_colored(label, cols, fg, colors.background));
         }
 
         // Row 2: current tool
@@ -910,7 +983,7 @@ impl StatePanel {
                 Some(tool) => format!("Tool: {tool}"),
                 None => "Tool: -".to_string(),
             };
-            result.push(make_row(&text, cols, STATE_TOOL_FG));
+            result.push(make_row_colored(&text, cols, colors.state_tool, colors.background));
         }
 
         // Row 3: cost
@@ -919,7 +992,7 @@ impl StatePanel {
                 Some(c) => format!("Cost: {c}"),
                 None => "Cost: -".to_string(),
             };
-            result.push(make_row(&text, cols, STATE_INFO_FG));
+            result.push(make_row_colored(&text, cols, colors.state_info, colors.background));
         }
 
         // Row 4: tokens
@@ -928,13 +1001,13 @@ impl StatePanel {
                 Some(t) => format!("Tokens: {t}"),
                 None => "Tokens: -".to_string(),
             };
-            result.push(make_row(&text, cols, STATE_INFO_FG));
+            result.push(make_row_colored(&text, cols, colors.state_info, colors.background));
         }
 
         // Row 5: separator
         if result.len() < rows {
             let sep: String = "─".repeat(cols.min(40));
-            result.push(make_row(&sep, cols, STATE_HEADER_FG));
+            result.push(make_row_colored(&sep, cols, colors.state_header, colors.background));
         }
 
         // Row 6+: recent state lines
@@ -947,27 +1020,27 @@ impl StatePanel {
                 if result.len() >= rows {
                     break;
                 }
-                result.push(make_row(&w, cols, STATE_DIM_FG));
+                result.push(make_row_colored(&w, cols, colors.state_dim, colors.background));
             }
         }
 
         // Pad remaining rows
         while result.len() < rows {
-            result.push(make_row("", cols, STATE_DIM_FG));
+            result.push(make_row_colored("", cols, colors.state_dim, colors.background));
         }
 
         result
     }
 }
 
-/// Build a single row of TerminalCells from a string.
-fn make_row(text: &str, cols: usize, fg: Rgb) -> Vec<TerminalCell> {
+/// Build a single row of TerminalCells from a string with explicit fg and bg.
+fn make_row_colored(text: &str, cols: usize, fg: Rgb, bg: Rgb) -> Vec<TerminalCell> {
     let mut row = Vec::with_capacity(cols);
     for ch in text.chars().take(cols) {
         row.push(TerminalCell {
             c: ch,
             fg,
-            bg: DEFAULT_BG,
+            bg,
             bold: false,
             italic: false,
             underline: false,
@@ -977,7 +1050,7 @@ fn make_row(text: &str, cols: usize, fg: Rgb) -> Vec<TerminalCell> {
         row.push(TerminalCell {
             c: ' ',
             fg,
-            bg: DEFAULT_BG,
+            bg,
             bold: false,
             italic: false,
             underline: false,
@@ -1047,6 +1120,11 @@ fn wrap_text(text: &str, cols: usize) -> Vec<String> {
 mod tests {
     use super::*;
 
+    /// Get default panel colors for testing.
+    fn default_colors() -> PanelColors {
+        PanelColors::default()
+    }
+
     #[test]
     fn push_messages_and_verify_cell_output() {
         let mut panel = MessagePanel::new();
@@ -1067,16 +1145,17 @@ mod tests {
 
     #[test]
     fn user_input_vs_ai_response_different_colors() {
+        let colors = default_colors();
         let mut panel = MessagePanel::new();
         panel.push_message("AI says hello".to_string(), false);
         panel.push_message("User says hi".to_string(), true);
 
         let cells = panel.to_terminal_cells(20, 5);
 
-        // AI response row: white fg
-        assert_eq!(cells[0][0].fg, AI_RESPONSE_FG);
-        // User input row: green fg
-        assert_eq!(cells[1][0].fg, USER_INPUT_FG);
+        // AI response row: foreground color
+        assert_eq!(cells[0][0].fg, colors.ai_response);
+        // User input row: green
+        assert_eq!(cells[1][0].fg, colors.user_input);
         // They should be different
         assert_ne!(cells[0][0].fg, cells[1][0].fg);
     }
@@ -1181,6 +1260,7 @@ mod tests {
 
     #[test]
     fn state_indicator_shows_correct_text_for_each_state() {
+        let colors = default_colors();
         let mut panel = StatePanel::new();
         let cols = 30;
         let rows = 10;
@@ -1189,28 +1269,28 @@ mod tests {
         let cells = panel.to_terminal_cells(cols, rows);
         let row1_text: String = cells[1].iter().map(|c| c.c).collect::<String>();
         assert!(row1_text.contains("Idle"), "Expected Idle, got: '{}'", row1_text.trim());
-        assert_eq!(cells[1][0].fg, STATE_IDLE_FG);
+        assert_eq!(cells[1][0].fg, colors.state_idle);
 
         // Running
         panel.update_state(SessionState::Running);
         let cells = panel.to_terminal_cells(cols, rows);
         let row1_text: String = cells[1].iter().map(|c| c.c).collect::<String>();
         assert!(row1_text.contains("Running"), "Expected Running, got: '{}'", row1_text.trim());
-        assert_eq!(cells[1][0].fg, STATE_RUNNING_FG);
+        assert_eq!(cells[1][0].fg, colors.state_running);
 
         // WaitingForInput
         panel.update_state(SessionState::WaitingForInput);
         let cells = panel.to_terminal_cells(cols, rows);
         let row1_text: String = cells[1].iter().map(|c| c.c).collect::<String>();
         assert!(row1_text.contains("WaitingForInput"), "Expected WaitingForInput, got: '{}'", row1_text.trim());
-        assert_eq!(cells[1][0].fg, STATE_WAITING_FG);
+        assert_eq!(cells[1][0].fg, colors.state_waiting);
 
         // Error
         panel.update_state(SessionState::Error);
         let cells = panel.to_terminal_cells(cols, rows);
         let row1_text: String = cells[1].iter().map(|c| c.c).collect::<String>();
         assert!(row1_text.contains("Error"), "Expected Error, got: '{}'", row1_text.trim());
-        assert_eq!(cells[1][0].fg, STATE_ERROR_FG);
+        assert_eq!(cells[1][0].fg, colors.state_error);
     }
 
     #[test]
@@ -1367,6 +1447,7 @@ mod tests {
 
     #[test]
     fn session_list_to_terminal_cells_renders_correct_rows() {
+        let colors = default_colors();
         let mut list = SessionList::new();
         list.update(sample_entries());
 
@@ -1386,7 +1467,7 @@ mod tests {
         assert!(row2.contains("Running"), "Expected Running state, got: '{}'", row2.trim());
         assert!(row2.contains("*"), "Expected pin marker, got: '{}'", row2.trim());
         // Selected (index 0) should have highlighted bg
-        assert_eq!(cells[2][0].bg, SESSION_SELECTED_BG);
+        assert_eq!(cells[2][0].bg, colors.session_selected_bg);
 
         // Row 3: "Foreground:" group header
         let row3: String = cells[3].iter().map(|c| c.c).collect::<String>();
@@ -1396,7 +1477,7 @@ mod tests {
         let row4: String = cells[4].iter().map(|c| c.c).collect::<String>();
         assert!(row4.contains("web-frontend"), "Expected web-frontend, got: '{}'", row4.trim());
         // Not selected -> default bg
-        assert_eq!(cells[4][0].bg, DEFAULT_BG);
+        assert_eq!(cells[4][0].bg, colors.background);
 
         // Row 5: "Background:" group header
         let row5: String = cells[5].iter().map(|c| c.c).collect::<String>();
@@ -1412,6 +1493,7 @@ mod tests {
 
     #[test]
     fn session_list_to_terminal_cells_state_colors() {
+        let colors = default_colors();
         let mut list = SessionList::new();
         list.update(sample_entries());
         // Select second entry so first isn't selected
@@ -1420,11 +1502,11 @@ mod tests {
         let cells = list.to_terminal_cells(50, 20);
 
         // Row 2: pinned entry - Running = yellow
-        assert_eq!(cells[2][0].fg, STATE_RUNNING_FG);
+        assert_eq!(cells[2][0].fg, colors.state_running);
         // Row 4: foreground entry - WaitingForInput = green (selected)
-        assert_eq!(cells[4][0].fg, STATE_WAITING_FG);
+        assert_eq!(cells[4][0].fg, colors.state_waiting);
         // Row 6: background entry - Idle = gray
-        assert_eq!(cells[6][0].fg, STATE_IDLE_FG);
+        assert_eq!(cells[6][0].fg, colors.state_idle);
     }
 
     #[test]
@@ -1565,6 +1647,7 @@ mod tests {
 
     #[test]
     fn side_panel_state_dot_colors() {
+        let colors = default_colors();
         let mut panel = SidePanel::new();
         panel.update_sessions(vec![
             make_side_entry("running", SessionState::Running, false),
@@ -1575,17 +1658,18 @@ mod tests {
 
         let cells = panel.to_terminal_cells(20, 10, 1.0);
         // Row 2: Running dot = yellow
-        assert_eq!(cells[2][0].fg, SIDE_DOT_RUNNING);
+        assert_eq!(cells[2][0].fg, colors.state_running);
         // Row 3: WaitingForInput dot = green
-        assert_eq!(cells[3][0].fg, SIDE_DOT_WAITING);
+        assert_eq!(cells[3][0].fg, colors.state_waiting);
         // Row 4: Error dot = red
-        assert_eq!(cells[4][0].fg, SIDE_DOT_ERROR);
+        assert_eq!(cells[4][0].fg, colors.state_error);
         // Row 5: Idle dot = gray
-        assert_eq!(cells[5][0].fg, SIDE_DOT_IDLE);
+        assert_eq!(cells[5][0].fg, colors.state_idle);
     }
 
     #[test]
     fn side_panel_active_session_highlighted_bg() {
+        let colors = default_colors();
         let mut panel = SidePanel::new();
         panel.update_sessions(vec![
             make_side_entry("active", SessionState::Idle, true),
@@ -1595,14 +1679,15 @@ mod tests {
         panel.selected_index = 0;
 
         let cells = panel.to_terminal_cells(20, 10, 1.0);
-        // Row 2: active session should have SIDE_ACTIVE_BG
-        assert_eq!(cells[2][0].bg, SIDE_ACTIVE_BG);
-        // Row 3: inactive session should have DEFAULT_BG
-        assert_eq!(cells[3][0].bg, DEFAULT_BG);
+        // Row 2: active session should have side_active_bg
+        assert_eq!(cells[2][0].bg, colors.side_active_bg);
+        // Row 3: inactive session should have background
+        assert_eq!(cells[3][0].bg, colors.background);
     }
 
     #[test]
     fn side_panel_selected_overrides_active_bg() {
+        let colors = default_colors();
         let mut panel = SidePanel::new();
         panel.update_sessions(vec![
             make_side_entry("active", SessionState::Idle, true),
@@ -1611,8 +1696,8 @@ mod tests {
         panel.selected_index = 1;
 
         let cells = panel.to_terminal_cells(20, 10, 1.0);
-        // Selected should use SIDE_SELECTED_BG, not SIDE_ACTIVE_BG
-        assert_eq!(cells[2][0].bg, SIDE_SELECTED_BG);
+        // Selected should use side_selected_bg, not side_active_bg
+        assert_eq!(cells[2][0].bg, colors.side_selected_bg);
     }
 
     #[test]

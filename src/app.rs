@@ -14,6 +14,7 @@ use winit::{
     window::{CursorIcon, Window, WindowId},
 };
 
+use crate::config::theme::ThemeManager;
 use crate::detector::patterns::default_claude_code_state_patterns;
 use crate::detector::StateDetector;
 use crate::input::{InputAction, InputHandler, InputMode, SurftermCmd};
@@ -482,7 +483,7 @@ impl ApplicationHandler<AppEvent> for App {
             }
         };
 
-        let renderer = match self.tokio_handle.block_on(Renderer::new(Arc::clone(&window))) {
+        let mut renderer = match self.tokio_handle.block_on(Renderer::new(Arc::clone(&window))) {
             Ok(r) => r,
             Err(e) => {
                 tracing::error!("Failed to initialize renderer: {e}");
@@ -490,6 +491,18 @@ impl ApplicationHandler<AppEvent> for App {
                 return;
             }
         };
+
+        // Load theme: global config + local override from cwd
+        let config_dir = {
+            if let Some(home) = std::env::var_os("HOME") {
+                std::path::PathBuf::from(home).join(".config").join("surfterm")
+            } else {
+                std::path::PathBuf::from(".config/surfterm")
+            }
+        };
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let theme = ThemeManager::load_theme(&config_dir, &cwd);
+        renderer.set_theme(theme);
 
         // Calculate terminal dimensions from main area (excluding sidebar).
         // These are initial values; they will be adjusted by update_card_stack

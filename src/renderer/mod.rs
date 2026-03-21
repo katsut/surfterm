@@ -8,11 +8,12 @@ use anyhow::Result;
 use tracing::instrument;
 use winit::window::Window;
 
+use crate::config::theme::SurftermTheme;
 use crate::session::state::SessionState;
 use crate::session::terminal::TerminalContent;
 
 use self::grid::GridLayout;
-use self::panel::{CardInfo, CardStack, DisplayMode, MessagePanel, SidePanel, SidePanelEntry, StatePanel};
+use self::panel::{CardInfo, CardStack, DisplayMode, MessagePanel, PanelColors, SidePanel, SidePanelEntry, StatePanel};
 use self::text::{RenderRegion, TextRenderer};
 
 /// Default font size in logical pixels for terminal cell rendering.
@@ -36,6 +37,8 @@ pub struct Renderer {
     pub side_panel: SidePanel,
     pub card_stack: CardStack,
     pub scale_factor: f32,
+    pub theme: SurftermTheme,
+    pub panel_colors: PanelColors,
 }
 
 impl Renderer {
@@ -113,6 +116,9 @@ impl Renderer {
             "wgpu renderer initialized"
         );
 
+        let theme = SurftermTheme::default();
+        let panel_colors = PanelColors::from_theme(&theme);
+
         Ok(Self {
             device,
             queue,
@@ -127,6 +133,8 @@ impl Renderer {
             side_panel: SidePanel::new(),
             card_stack: CardStack::new(),
             scale_factor,
+            theme,
+            panel_colors,
         })
     }
 
@@ -162,7 +170,7 @@ impl Renderer {
             .map_err(|e| anyhow::anyhow!("Failed to acquire surface texture: {e}"))
     }
 
-    /// Render a frame: clear the screen with the dark theme background color (#1e1e2e).
+    /// Render a frame: clear the screen with the theme background color.
     /// This is a simple clear-only fallback when no terminal content is available.
     #[instrument(skip(self))]
     pub fn render(&mut self) -> Result<()> {
@@ -178,7 +186,7 @@ impl Renderer {
                 label: Some("surfterm_encoder"),
             });
 
-        // Dark theme background: #1e1e2e (Catppuccin Mocha base)
+        let clear_color = self.theme.background_wgpu();
         {
             let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("clear_pass"),
@@ -187,12 +195,7 @@ impl Renderer {
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0x1e as f64 / 255.0,
-                            g: 0x1e as f64 / 255.0,
-                            b: 0x2e as f64 / 255.0,
-                            a: 1.0,
-                        }),
+                        load: wgpu::LoadOp::Clear(clear_color),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -233,11 +236,12 @@ impl Renderer {
         let sidebar_rect = self.grid.sidebar_rect();
         let main_rect = self.grid.main_rect();
 
-        // Build sidebar cells from the side panel.
-        let sidebar_cells = self.side_panel.to_terminal_cells(
+        // Build sidebar cells from the side panel using theme colors.
+        let sidebar_cells = self.side_panel.to_terminal_cells_themed(
             self.grid.sidebar_cols(),
             self.grid.main_rows(),
             self.scale_factor,
+            &self.panel_colors,
         );
 
         let mut regions = Vec::with_capacity(4);
@@ -262,7 +266,7 @@ impl Renderer {
         let active_content_rows = main_rows.saturating_sub(1 + bg_rows); // 1 for title bar
 
         // ── Active card title bar (row 0 of main area) ──
-        if let Some(title_row) = self.card_stack.active_title_bar(main_cols) {
+        if let Some(title_row) = self.card_stack.active_title_bar_themed(main_cols, &self.panel_colors) {
             regions.push(RenderRegion {
                 cells: vec![title_row],
                 origin_x: main_rect.x,
@@ -295,10 +299,11 @@ impl Renderer {
 
         // ── Background card header rows (at bottom of main area) ──
         {
-            let bg_title_bars = self.card_stack.background_title_bars(
+            let bg_title_bars = self.card_stack.background_title_bars_themed(
                 main_cols,
                 self.scale_factor,
                 self.grid.cell_width,
+                &self.panel_colors,
             );
 
             for (i, (left_offset_cells, row_cells)) in bg_title_bars.into_iter().enumerate() {
@@ -330,6 +335,7 @@ impl Renderer {
         )?;
 
         // Single render pass: clear + text
+        let clear_color = self.theme.background_wgpu();
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main_pass"),
@@ -338,12 +344,7 @@ impl Renderer {
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0x1e as f64 / 255.0,
-                            g: 0x1e as f64 / 255.0,
-                            b: 0x2e as f64 / 255.0,
-                            a: 1.0,
-                        }),
+                        load: wgpu::LoadOp::Clear(clear_color),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -397,6 +398,13 @@ impl Renderer {
     #[allow(dead_code)]
     pub fn update_card_stack(&mut self, cards: Vec<CardInfo>) {
         self.card_stack.update(cards);
+    }
+
+    /// Set the theme and update derived panel colors.
+    #[allow(dead_code)]
+    pub fn set_theme(&mut self, theme: SurftermTheme) {
+        self.panel_colors = PanelColors::from_theme(&theme);
+        self.theme = theme;
     }
 
     /// Calculate the terminal dimensions for the active card content area.
