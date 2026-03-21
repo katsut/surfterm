@@ -44,8 +44,8 @@ pub struct PtyHandle {
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
     output_rx: mpsc::Receiver<Vec<u8>>,
     child_exited: Arc<Notify>,
-    _reader_task: tokio::task::JoinHandle<()>,
-    _child_task: tokio::task::JoinHandle<()>,
+    _reader_task: std::thread::JoinHandle<()>,
+    _child_task: std::thread::JoinHandle<()>,
 }
 
 #[allow(dead_code)]
@@ -95,10 +95,12 @@ impl PtyHandle {
         let (output_tx, output_rx) = mpsc::channel::<Vec<u8>>(256);
         let child_exited = Arc::new(Notify::new());
 
-        // Background task: read PTY output in a blocking thread.
+        // Background thread: read PTY output. Uses std::thread instead of
+        // tokio::task::spawn_blocking so that spawn() can be called from any
+        // thread (including the winit main thread which has no tokio context).
         let reader_task = {
             let tx = output_tx;
-            tokio::task::spawn_blocking(move || {
+            std::thread::spawn(move || {
                 let mut buf = [0u8; 4096];
                 loop {
                     match reader.read(&mut buf) {
@@ -114,10 +116,10 @@ impl PtyHandle {
             })
         };
 
-        // Background task: wait for child exit.
+        // Background thread: wait for child exit.
         let child_task = {
             let exited = Arc::clone(&child_exited);
-            tokio::task::spawn_blocking(move || {
+            std::thread::spawn(move || {
                 let _ = child.wait();
                 exited.notify_waiters();
             })
