@@ -75,6 +75,7 @@ impl PtyHandle {
         let mut cmd = CommandBuilder::new(&shell);
         cmd.cwd(std::env::current_dir().unwrap_or_else(|_| "/".into()));
         cmd.env("TERM_PROGRAM", "surfterm");
+        cmd.env("TERM", "xterm-256color");
         // Ensure UTF-8 locale so shells and tools handle multibyte characters
         if std::env::var("LANG").is_err() {
             cmd.env("LANG", "en_US.UTF-8");
