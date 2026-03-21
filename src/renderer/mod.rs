@@ -327,6 +327,39 @@ impl Renderer {
             }
         }
 
+        // ── Active card left border (continues │ from tab row 1 down through content) ──
+        {
+            let border_fg = self.panel_colors.card_border;
+            let border_bg = self.panel_colors.background;
+            // Start from row 1 (content row of tab) down to end of active content
+            let border_start_y = main_rect.y + self.grid.cell_height; // skip row 0 (╭)
+            let border_end_y = main_rect.y + (active_tab_rows + active_content_rows) as f32 * self.grid.cell_height;
+            let total_height = border_end_y - border_start_y;
+
+            if total_height > 0.0 {
+                // Dense fill at font-size intervals (no line_height gap)
+                let dense_height = self.text_renderer.font_size;
+                let dense_count = (total_height / dense_height).ceil() as usize;
+                let dense_cells: Vec<Vec<TerminalCell>> = (0..dense_count)
+                    .map(|_| vec![TerminalCell {
+                        c: '\u{2595}', // ▕ (renders as thin line on left edge of next cell — but we use it at x=0)
+                        fg: border_fg,
+                        bg: border_bg,
+                        bold: false,
+                        italic: false,
+                        underline: false,
+                    }])
+                    .collect();
+                regions.push(RenderRegion {
+                    cells: dense_cells,
+                    origin_x: main_rect.x,
+                    origin_y: border_start_y,
+                    cell_width: self.grid.cell_width,
+                    cell_height: dense_height,
+                });
+            }
+        }
+
         // ── Background card tabs (at bottom, max 3 visible + overflow) ──
         {
             let bg_tabs = self.card_stack.background_card_tabs_themed(
