@@ -404,13 +404,9 @@ impl CardStack {
             SessionState::Idle => ("Idle", colors.state_idle),
         };
 
-        // Row 0: "┌────...────" (corner + horizontal line)
+        // Row 0: "─────...────" (horizontal line; left border ▕ overlays col 0 to form corner)
         let mut border_row = Vec::with_capacity(cols);
-        border_row.push(TerminalCell {
-            c: '\u{250c}', // ┌
-            fg: border_fg, bg, bold: false, italic: false, underline: false,
-        });
-        for _ in 1..cols {
+        for _ in 0..cols {
             border_row.push(TerminalCell {
                 c: '\u{2500}', // ─
                 fg: border_fg, bg, bold: false, italic: false, underline: false,
