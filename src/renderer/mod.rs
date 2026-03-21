@@ -293,7 +293,7 @@ impl Renderer {
         {
             let border_fg = self.panel_colors.card_border;
             let border_bg = self.panel_colors.background;
-            let border_start_y = main_rect.y; // start from row 0 (top of card)
+            let border_start_y = main_rect.y + self.grid.cell_height; // start from row 1 (below top border line)
             let border_end_y = main_rect.y + (active_tab_rows + active_content_rows) as f32 * self.grid.cell_height;
             let total_height = border_end_y - border_start_y;
 
