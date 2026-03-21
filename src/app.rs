@@ -684,6 +684,23 @@ impl ApplicationHandler<AppEvent> for App {
                     if let Some(active_id) = self.active_session {
                         if let Some(pipeline) = self.sessions.get(&active_id) {
                             let content = pipeline.terminal.content();
+
+                            // Update IME cursor area to terminal cursor position
+                            if let Some(window) = self.window.as_ref() {
+                                let (_, card_dims_rows) = renderer.active_card_dimensions();
+                                let active_tab_rows = 1;
+                                let _ = card_dims_rows; // used for bounds check
+                                let cursor_x = renderer.grid.main_rect().x
+                                    + content.cursor_col as f32 * renderer.grid.cell_width;
+                                let cursor_y = renderer.grid.main_rect().y
+                                    + (active_tab_rows as f32 + content.cursor_row as f32)
+                                        * renderer.grid.cell_height;
+                                window.set_ime_cursor_area(
+                                    PhysicalPosition::new(cursor_x as i32, cursor_y as i32 + renderer.grid.cell_height as i32),
+                                    winit::dpi::PhysicalSize::new(renderer.grid.cell_width as u32, renderer.grid.cell_height as u32),
+                                );
+                            }
+
                             if let Err(e) = renderer.render_content(&content) {
                                 tracing::error!("Render error: {e}");
                             }
