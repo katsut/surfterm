@@ -21,6 +21,7 @@ use crate::input::{InputAction, InputHandler, InputMode, SurftermCmd};
 use crate::menu::{AppMenu, MenuAction};
 use crate::renderer::panel::{CardInfo, SidePanelEntry};
 use crate::renderer::Renderer;
+use crate::session::state::SessionState;
 use crate::session::pty::PtyHandle;
 use crate::session::stream_splitter::StreamSplitter;
 use crate::session::terminal::Terminal;
@@ -931,34 +932,30 @@ impl ApplicationHandler<AppEvent> for App {
                     pipeline.splitter.classify_chunk(&data);
 
                     // Feed to StateDetector
+                    let prev_state = pipeline.detector.current_state();
                     pipeline.detector.process_chunk(&data);
+                    let new_state = pipeline.detector.current_state();
+
+                    // Auto-switch: when a background session becomes WaitingForInput,
+                    // bring it to the foreground so the user can respond immediately.
+                    if new_state == SessionState::WaitingForInput
+                        && prev_state != SessionState::WaitingForInput
+                        && self.active_session != Some(session_id)
+                    {
+                        tracing::info!(%session_id, "Session waiting for input, switching to foreground");
+                        self.active_session = Some(session_id);
+                        self.resize_active_session_to_card();
+                    }
 
                     // Update state in renderer
                     if self.active_session == Some(session_id) {
                         if let Some(renderer) = self.renderer.as_mut() {
-                            renderer.update_session_state(pipeline.detector.current_state());
+                            renderer.update_session_state(new_state);
                         }
                     }
 
-                    // Update side panel to reflect state changes
-                    // (rebuild entries from current state)
-                    let entries: Vec<SidePanelEntry> = self
-                        .session_order
-                        .iter()
-                        .filter_map(|id| {
-                            let p = self.sessions.get(id)?;
-                            Some(SidePanelEntry {
-                                id: *id,
-                                name: p.project_name.clone(),
-                                state: p.detector.current_state(),
-                                is_active: self.active_session == Some(*id),
-                            })
-                        })
-                        .collect();
-
-                    if let Some(renderer) = self.renderer.as_mut() {
-                        renderer.update_side_panel(entries);
-                    }
+                    // Update side panel and card stack
+                    self.update_side_panel();
                 }
 
                 // Request redraw
