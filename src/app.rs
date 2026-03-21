@@ -665,6 +665,17 @@ impl ApplicationHandler<AppEvent> for App {
                 tracing::debug!(bytes = data.len(), %session_id, "PTY output received");
 
                 if let Some(pipeline) = self.sessions.get_mut(&session_id) {
+                    // Detect OSC 7 (cwd change) in PTY output
+                    let text = String::from_utf8_lossy(&data);
+                    if let Some(cwd) = extract_osc7_cwd(&text) {
+                        if let Some(dir_name) = std::path::Path::new(&cwd)
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                        {
+                            pipeline.project_name = dir_name;
+                        }
+                    }
+
                     // Feed to terminal emulator
                     pipeline.terminal.feed(&data);
 
@@ -841,4 +852,44 @@ mod tests {
         let row = 34_usize;
         assert!(!(row >= bg_start_row && row < bg_start_row + bg_rows));
     }
+
+    #[test]
+    fn extract_osc7_cwd_parses_correctly() {
+        assert_eq!(
+            super::extract_osc7_cwd("\x1b]7;file://localhost/Users/alice/projects/myapp\x1b\\"),
+            Some("/Users/alice/projects/myapp".to_string()),
+        );
+        assert_eq!(
+            super::extract_osc7_cwd("\x1b]7;file:///tmp/test\x07"),
+            Some("/tmp/test".to_string()),
+        );
+        assert_eq!(super::extract_osc7_cwd("normal output"), None);
+    }
+}
+
+/// Extract the working directory path from an OSC 7 escape sequence.
+///
+/// Format: `ESC ] 7 ; file://hostname/path ST`
+/// where ST is `ESC \` or `BEL (\x07)`.
+fn extract_osc7_cwd(text: &str) -> Option<String> {
+    // Look for OSC 7 pattern: \x1b]7;file://...path... followed by \x1b\\ or \x07
+    let marker = "\x1b]7;";
+    let start = text.find(marker)?;
+    let rest = &text[start + marker.len()..];
+
+    // Find the string terminator (ESC \ or BEL)
+    let end = rest
+        .find("\x1b\\")
+        .or_else(|| rest.find('\x07'))?;
+    let url = &rest[..end];
+
+    // Parse file:// URL to extract path
+    if let Some(path_start) = url.strip_prefix("file://") {
+        // Skip hostname (everything up to the next '/')
+        if let Some(slash_pos) = path_start.find('/') {
+            return Some(path_start[slash_pos..].to_string());
+        }
+    }
+
+    None
 }
