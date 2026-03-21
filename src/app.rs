@@ -213,7 +213,44 @@ impl App {
             self.active_session = self.session_order.first().copied();
         }
 
+        // Renumber duplicate names after removal
+        self.renumber_session_names();
         self.update_side_panel();
+    }
+
+    /// Renumber sessions that share the same base directory name.
+    ///
+    /// If only one session remains with a given base name, remove the " (N)" suffix.
+    /// If multiple remain, renumber sequentially starting from (1).
+    fn renumber_session_names(&mut self) {
+        // Group session IDs by base name
+        let mut groups: HashMap<String, Vec<SessionId>> = HashMap::new();
+        for id in &self.session_order {
+            if let Some(pipeline) = self.sessions.get(id) {
+                let name = &pipeline.project_name;
+                let base = name
+                    .rfind(" (")
+                    .map(|i| name[..i].to_string())
+                    .unwrap_or_else(|| name.clone());
+                groups.entry(base).or_default().push(*id);
+            }
+        }
+
+        for (base, ids) in &groups {
+            if ids.len() == 1 {
+                // Only one session — remove number suffix
+                if let Some(pipeline) = self.sessions.get_mut(&ids[0]) {
+                    pipeline.project_name = base.clone();
+                }
+            } else {
+                // Multiple sessions — renumber sequentially
+                for (i, id) in ids.iter().enumerate() {
+                    if let Some(pipeline) = self.sessions.get_mut(id) {
+                        pipeline.project_name = format!("{} ({})", base, i + 1);
+                    }
+                }
+            }
+        }
     }
 
     /// Switch the active session.
