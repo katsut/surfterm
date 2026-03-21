@@ -10,7 +10,7 @@ use winit::window::Window;
 
 use crate::config::theme::SurftermTheme;
 use crate::session::state::SessionState;
-use crate::session::terminal::TerminalContent;
+use crate::session::terminal::{TerminalCell, TerminalContent};
 
 use self::grid::GridLayout;
 use self::panel::{CardInfo, CardStack, DisplayMode, MessagePanel, PanelColors, SidePanel, SidePanelEntry, StatePanel};
@@ -325,6 +325,35 @@ impl Renderer {
                         cell_height: self.grid.cell_height,
                     });
                 }
+            }
+        }
+
+        // ── Vertical divider between main area and sidebar ──
+        {
+            let divider_x = sidebar_rect.x - self.grid.cell_width;
+            if divider_x >= 0.0 {
+                let divider_fg = self.panel_colors.card_border;
+                let divider_bg = self.panel_colors.background;
+                let total_rows = self.grid.main_rows() as usize;
+                let divider_cells: Vec<Vec<TerminalCell>> = (0..total_rows)
+                    .map(|_| {
+                        vec![TerminalCell {
+                            c: '\u{2502}', // │
+                            fg: divider_fg,
+                            bg: divider_bg,
+                            bold: false,
+                            italic: false,
+                            underline: false,
+                        }]
+                    })
+                    .collect();
+                regions.push(RenderRegion {
+                    cells: divider_cells,
+                    origin_x: divider_x,
+                    origin_y: 0.0,
+                    cell_width: self.grid.cell_width,
+                    cell_height: self.grid.cell_height,
+                });
             }
         }
 
