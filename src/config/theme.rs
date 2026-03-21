@@ -53,12 +53,15 @@ impl ThemeColor {
         Rgb::new(self.r, self.g, self.b)
     }
 
-    /// Convert to a wgpu `Color` (normalized f64 components).
+    /// Convert to a wgpu `Color` with sRGB → linear conversion.
+    ///
+    /// wgpu's `Bgra8UnormSrgb` surface format applies sRGB encoding on output,
+    /// so clear colors must be provided in linear space.
     pub fn to_wgpu_color(self) -> wgpu::Color {
         wgpu::Color {
-            r: self.r as f64 / 255.0,
-            g: self.g as f64 / 255.0,
-            b: self.b as f64 / 255.0,
+            r: srgb_to_linear(self.r as f64 / 255.0),
+            g: srgb_to_linear(self.g as f64 / 255.0),
+            b: srgb_to_linear(self.b as f64 / 255.0),
             a: 1.0,
         }
     }
@@ -447,6 +450,18 @@ impl Default for ThemeManager {
 /// Convert HSL color values to a `ThemeColor` (RGB).
 ///
 /// - `h`: hue in degrees (0.0..360.0)
+/// Convert sRGB component (0.0..1.0) to linear space.
+///
+/// sRGB uses a piecewise transfer function. wgpu's Srgb surface formats
+/// apply sRGB encoding on output, so input colors must be in linear space.
+fn srgb_to_linear(c: f64) -> f64 {
+    if c <= 0.04045 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
+}
+
 /// - `s`: saturation (0.0..1.0)
 /// - `l`: lightness (0.0..1.0)
 fn hsl_to_rgb(h: f64, s: f64, l: f64) -> ThemeColor {
