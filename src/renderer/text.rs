@@ -57,18 +57,14 @@ impl TextRenderer {
         }
     }
 
-    /// Render terminal cells into the given render pass.
-    ///
-    /// Each row of `cells` is rendered at the correct grid position within the
-    /// panel defined by `offset_x` and `offset_y`. Foreground colors and bold
-    /// weight from `TerminalCell` are applied per-character.
+    /// Prepare terminal cells for rendering (glyphon prepare step).
+    /// Must be called before `render_pass()`.
     #[allow(clippy::too_many_arguments)]
     #[instrument(skip_all)]
-    pub fn render_cells(
+    pub fn render_cells_prepare(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        pass: &mut wgpu::RenderPass<'_>,
         grid: &GridLayout,
         cells: &[Vec<TerminalCell>],
         surface_size: (u32, u32),
@@ -78,8 +74,6 @@ impl TextRenderer {
     ) -> Result<()> {
         let metrics = Metrics::new(self.font_size, grid.cell_height);
 
-        // Build one glyphon Buffer per row, setting per-character attributes
-        // for foreground color and weight.
         let mut buffers: Vec<Buffer> = Vec::with_capacity(cells.len());
 
         for row_cells in cells {
@@ -90,11 +84,7 @@ impl TextRenderer {
                 Some(grid.cell_height),
             );
 
-            // Collect the text for this row and build an AttrsList with
-            // per-character spans.
             let text: String = row_cells.iter().map(|c| c.c).collect();
-
-            // Build spans: group consecutive cells with the same attributes.
             let mut spans: Vec<(&str, Attrs)> = Vec::new();
             let mut byte_offset = 0;
 
@@ -144,7 +134,6 @@ impl TextRenderer {
             bottom: surface_size.1 as i32,
         });
 
-        // Build TextAreas, one per row, each positioned at its row offset.
         let text_areas: Vec<TextArea<'_>> = buffers
             .iter()
             .enumerate()
@@ -154,7 +143,7 @@ impl TextRenderer {
                 top: offset_y + row_idx as f32 * grid.cell_height,
                 scale: 1.0,
                 bounds,
-                default_color: Color::rgb(205, 214, 244), // Catppuccin text
+                default_color: Color::rgb(205, 214, 244),
                 custom_glyphs: &[],
             })
             .collect();
@@ -169,11 +158,16 @@ impl TextRenderer {
             &mut self.swash_cache,
         )?;
 
-        self.renderer
-            .render(&self.atlas, &self.viewport, pass)?;
-
         self.atlas.trim();
 
+        Ok(())
+    }
+
+    /// Execute the glyphon render pass (must be called after `render_cells_prepare`).
+    #[instrument(skip_all)]
+    pub fn render_pass(&mut self, pass: &mut wgpu::RenderPass<'_>) -> Result<()> {
+        self.renderer
+            .render(&self.atlas, &self.viewport, pass)?;
         Ok(())
     }
 }

@@ -195,16 +195,9 @@ impl Renderer {
         Ok(())
     }
 
-    /// Render terminal content with panel layout:
-    #[allow(dead_code)]
-    /// 1. Clear with dark background
-    /// 2. Draw a vertical divider between left and right panels
-    /// 3. Render terminal cells in the left panel area
-    ///
-    /// In `DisplayMode::Raw`, the full `TerminalContent` is rendered across
-    /// the entire window with no panel split. In `DisplayMode::Panels`, the
-    /// message panel occupies the left side and the raw content occupies the
-    /// right side.
+    /// Render terminal content. In Raw mode, renders the full terminal across
+    /// the entire window. In Panels mode, renders message panel left and state
+    /// panel right.
     #[instrument(skip(self, content))]
     pub fn render_content(&mut self, content: &TerminalContent) -> Result<()> {
         let output = self.acquire_surface_texture()?;
@@ -219,10 +212,49 @@ impl Renderer {
                 label: Some("surfterm_content_encoder"),
             });
 
-        // Pass 1: Clear background (#1e1e2e Catppuccin Mocha base)
+        let surface_size = (self.config.width, self.config.height);
+
+        // Prepare text content before creating the render pass.
+        // glyphon's prepare() must be called before the render pass.
+        let clip = TextBounds {
+            left: 0,
+            top: 0,
+            right: self.config.width as i32,
+            bottom: self.config.height as i32,
+        };
+
+        match self.display_mode {
+            DisplayMode::Raw => {
+                self.text_renderer.render_cells_prepare(
+                    &self.device,
+                    &self.queue,
+                    &self.grid,
+                    &content.rows,
+                    surface_size,
+                    0.0,
+                    0.0,
+                    Some(clip),
+                )?;
+            }
+            DisplayMode::Panels => {
+                // For now, render terminal content in full window (same as Raw)
+                self.text_renderer.render_cells_prepare(
+                    &self.device,
+                    &self.queue,
+                    &self.grid,
+                    &content.rows,
+                    surface_size,
+                    0.0,
+                    0.0,
+                    Some(clip),
+                )?;
+            }
+        }
+
+        // Single render pass: clear + text
         {
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("clear_pass"),
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("main_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     depth_slice: None,
@@ -242,104 +274,8 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-        }
 
-        // Pass 2: Render text content depending on display mode.
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("text_pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-
-            let surface_size = (self.config.width, self.config.height);
-
-            match self.display_mode {
-                DisplayMode::Raw => {
-                    // Raw mode: render full TerminalContent across entire window.
-                    let clip = TextBounds {
-                        left: 0,
-                        top: 0,
-                        right: self.config.width as i32,
-                        bottom: self.config.height as i32,
-                    };
-
-                    self.text_renderer.render_cells(
-                        &self.device,
-                        &self.queue,
-                        &mut render_pass,
-                        &self.grid,
-                        &content.rows,
-                        surface_size,
-                        0.0,
-                        0.0,
-                        Some(clip),
-                    )?;
-                }
-                DisplayMode::Panels => {
-                    // Panels mode: message panel on left, raw content on right.
-                    let left_rect = self.grid.left_panel_rect();
-                    let left_clip = TextBounds {
-                        left: left_rect.x as i32,
-                        top: left_rect.y as i32,
-                        right: (left_rect.x + left_rect.width) as i32,
-                        bottom: (left_rect.y + left_rect.height) as i32,
-                    };
-
-                    // Render message panel cells in the left area.
-                    let left_cols = self.grid.left_panel_cols();
-                    let message_cells =
-                        self.message_panel.to_terminal_cells(left_cols, self.grid.rows);
-
-                    self.text_renderer.render_cells(
-                        &self.device,
-                        &self.queue,
-                        &mut render_pass,
-                        &self.grid,
-                        &message_cells,
-                        surface_size,
-                        left_rect.x,
-                        left_rect.y,
-                        Some(left_clip),
-                    )?;
-
-                    // Render state panel cells in the right area.
-                    let right_rect = self.grid.right_panel_rect();
-                    let right_clip = TextBounds {
-                        left: right_rect.x as i32,
-                        top: right_rect.y as i32,
-                        right: (right_rect.x + right_rect.width) as i32,
-                        bottom: (right_rect.y + right_rect.height) as i32,
-                    };
-
-                    let right_cols = self.grid.right_panel_cols();
-                    let state_cells =
-                        self.state_panel.to_terminal_cells(right_cols, self.grid.rows);
-
-                    self.text_renderer.render_cells(
-                        &self.device,
-                        &self.queue,
-                        &mut render_pass,
-                        &self.grid,
-                        &state_cells,
-                        surface_size,
-                        right_rect.x,
-                        right_rect.y,
-                        Some(right_clip),
-                    )?;
-                }
-            }
+            self.text_renderer.render_pass(&mut render_pass)?;
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
