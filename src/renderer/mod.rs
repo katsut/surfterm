@@ -287,32 +287,43 @@ impl Renderer {
 
         // ── Active card terminal content (rows 2..2+active_content_rows) ──
         {
-            let mut clipped_rows: Vec<Vec<_>> = content
+            let clipped_rows: Vec<Vec<_>> = content
                 .rows
                 .iter()
                 .take(active_content_rows)
                 .cloned()
                 .collect();
 
-            // Render cursor as a blinking underline at cursor position
-            if self.cursor_visible && content.cursor_row < clipped_rows.len() {
-                let row = &mut clipped_rows[content.cursor_row];
-                if content.cursor_col < row.len() {
-                    let cell = &mut row[content.cursor_col];
-                    let cursor_color = self.theme.colors.cursor.to_rgb();
-                    cell.c = '\u{2581}'; // ▁ lower one eighth block (underline cursor)
-                    cell.fg = cursor_color;
-                }
-            }
-
             if !clipped_rows.is_empty() {
+                let content_origin_y = main_rect.y + active_tab_rows as f32 * self.grid.cell_height;
                 regions.push(RenderRegion {
                     cells: clipped_rows,
                     origin_x: main_rect.x,
-                    origin_y: main_rect.y + active_tab_rows as f32 * self.grid.cell_height,
+                    origin_y: content_origin_y,
                     cell_width: self.grid.cell_width,
                     cell_height: self.grid.cell_height,
                 });
+
+                // Overlay blinking underline cursor as a separate region
+                if self.cursor_visible && content.cursor_row < active_content_rows {
+                    let cursor_color = self.theme.colors.cursor.to_rgb();
+                    let bg = self.theme.colors.background.to_rgb();
+                    let cursor_cell = TerminalCell {
+                        c: '\u{2581}', // ▁
+                        fg: cursor_color,
+                        bg,
+                        bold: false,
+                        italic: false,
+                        underline: false,
+                    };
+                    regions.push(RenderRegion {
+                        cells: vec![vec![cursor_cell]],
+                        origin_x: main_rect.x + content.cursor_col as f32 * self.grid.cell_width,
+                        origin_y: content_origin_y + content.cursor_row as f32 * self.grid.cell_height,
+                        cell_width: self.grid.cell_width,
+                        cell_height: self.grid.cell_height,
+                    });
+                }
             }
         }
 
