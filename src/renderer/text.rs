@@ -275,6 +275,23 @@ impl TextRenderer {
             });
         }
 
+        if !text_areas.is_empty() {
+            let first = &text_areas[0];
+            let last_sidebar = if sidebar_buffers.len() > 0 { &text_areas[sidebar_buffers.len() - 1] } else { first };
+            let first_main = if sidebar_buffers.len() < text_areas.len() { &text_areas[sidebar_buffers.len()] } else { first };
+            tracing::info!(
+                total_areas = text_areas.len(),
+                sidebar_areas = sidebar_buffers.len(),
+                main_areas = main_buffers.len(),
+                first_sidebar_left = first.left,
+                first_sidebar_top = first.top,
+                last_sidebar_top = last_sidebar.top,
+                first_main_left = first_main.left,
+                first_main_top = first_main.top,
+                "TextArea layout"
+            );
+        }
+
         self.renderer.prepare(
             device,
             queue,

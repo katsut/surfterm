@@ -228,41 +228,70 @@ impl Renderer {
         let sidebar_rect = self.grid.sidebar_rect();
         let main_rect = self.grid.main_rect();
 
-        // Prepare sidebar cells
-        let sidebar_cols = self.grid.sidebar_cols();
-        let sidebar_rows = self.grid.rows;
+        // Build merged rows: [sidebar cells | main terminal cells] per row.
+        // This renders everything as a single grid so glyphon handles it
+        // as one continuous text area per row.
+        let sidebar_cols = self.grid.sidebar_cols() as usize;
+        let main_cols = self.grid.main_cols() as usize;
+        let total_rows = self.grid.rows as usize;
+
         let sidebar_cells =
             self.side_panel
-                .to_terminal_cells(sidebar_cols, sidebar_rows, self.scale_factor);
+                .to_terminal_cells(sidebar_cols as u16, total_rows as u16, self.scale_factor);
 
-        // Prepare sidebar and main terminal content as two separate regions
-        // rendered at different x offsets.
-        let sidebar_clip = TextBounds {
-            left: sidebar_rect.x as i32,
-            top: sidebar_rect.y as i32,
-            right: (sidebar_rect.x + sidebar_rect.width) as i32,
-            bottom: (sidebar_rect.y + sidebar_rect.height) as i32,
-        };
-        let main_clip = TextBounds {
-            left: main_rect.x as i32,
-            top: main_rect.y as i32,
-            right: (main_rect.x + main_rect.width) as i32,
-            bottom: (main_rect.y + main_rect.height) as i32,
+        let _ = sidebar_rect;
+        let _ = main_rect;
+
+        let mut merged_rows: Vec<Vec<crate::session::terminal::TerminalCell>> =
+            Vec::with_capacity(total_rows);
+
+        for row_idx in 0..total_rows {
+            let mut row = Vec::with_capacity(sidebar_cols + main_cols);
+
+            // Sidebar portion
+            if row_idx < sidebar_cells.len() && sidebar_cols <= sidebar_cells[row_idx].len() {
+                row.extend_from_slice(&sidebar_cells[row_idx][..sidebar_cols]);
+            } else {
+                for _ in 0..sidebar_cols {
+                    row.push(crate::session::terminal::TerminalCell::default());
+                }
+            }
+
+            // Main terminal portion
+            if row_idx < content.rows.len() {
+                let term_row = &content.rows[row_idx];
+                for col_idx in 0..main_cols {
+                    if col_idx < term_row.len() {
+                        row.push(term_row[col_idx].clone());
+                    } else {
+                        row.push(crate::session::terminal::TerminalCell::default());
+                    }
+                }
+            } else {
+                for _ in 0..main_cols {
+                    row.push(crate::session::terminal::TerminalCell::default());
+                }
+            }
+
+            merged_rows.push(row);
+        }
+
+        let clip = TextBounds {
+            left: 0,
+            top: 0,
+            right: self.config.width as i32,
+            bottom: self.config.height as i32,
         };
 
-        self.text_renderer.render_two_regions_prepare(
+        self.text_renderer.render_cells_prepare(
             &self.device,
             &self.queue,
             &self.grid,
-            &sidebar_cells,
-            sidebar_rect.x,
-            sidebar_rect.y,
-            sidebar_clip,
-            &content.rows,
-            main_rect.x,
-            main_rect.y,
-            main_clip,
+            &merged_rows,
             surface_size,
+            0.0,
+            0.0,
+            Some(clip),
         )?;
 
         // Single render pass: clear + text
