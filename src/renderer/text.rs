@@ -131,11 +131,7 @@ impl TextRenderer {
                         Weight::NORMAL
                     };
 
-                    // Wide chars (CJK/kanji): don't restrict to Monospace so
-                    // cosmic-text can fall back to system CJK fonts (Hiragino etc.)
-                    let family = if cell.wide {
-                        Family::SansSerif
-                    } else if font_family_str.is_empty() {
+                    let family = if font_family_str.is_empty() {
                         Family::Monospace
                     } else {
                         Family::Name(&font_family_str)
@@ -147,10 +143,12 @@ impl TextRenderer {
                         .weight(weight)
                         .color(Color::rgb(cell.fg.r, cell.fg.g, cell.fg.b));
 
+                    // Default attrs without family restriction — allows cosmic-text
+                    // to fall back to any system font (Hiragino etc.) for CJK/kanji.
                     buffer.set_rich_text(
                         &mut self.font_system,
                         [(&*ch, attrs)],
-                        &Attrs::new(),
+                        &Attrs::new().weight(weight).color(Color::rgb(cell.fg.r, cell.fg.g, cell.fg.b)),
                         Shaping::Advanced,
                         None,
                     );
