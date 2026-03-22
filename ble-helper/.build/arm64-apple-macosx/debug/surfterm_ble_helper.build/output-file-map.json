@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/tsuruta/Develop/private/Surfterm/ble-helper/.build/arm64-apple-macosx/debug/surfterm_ble_helper.build/master.swiftdeps"
+  },
+  "/Users/tsuruta/Develop/private/Surfterm/ble-helper/Sources/main.swift": {
+    "dependencies": "/Users/tsuruta/Develop/private/Surfterm/ble-helper/.build/arm64-apple-macosx/debug/surfterm_ble_helper.build/main.d",
+    "object": "/Users/tsuruta/Develop/private/Surfterm/ble-helper/.build/arm64-apple-macosx/debug/surfterm_ble_helper.build/main.swift.o",
+    "swiftmodule": "/Users/tsuruta/Develop/private/Surfterm/ble-helper/.build/arm64-apple-macosx/debug/surfterm_ble_helper.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/tsuruta/Develop/private/Surfterm/ble-helper/.build/arm64-apple-macosx/debug/surfterm_ble_helper.build/main.swiftdeps",
+    "diagnostics": "/Users/tsuruta/Develop/private/Surfterm/ble-helper/.build/arm64-apple-macosx/debug/surfterm_ble_helper.build/main.dia"
+  }
+}
