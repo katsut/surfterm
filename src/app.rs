@@ -1302,7 +1302,13 @@ fn update_session_name_from_cwd(pipeline: &mut SessionPipeline) {
     if let Some(pid) = pipeline.child_pid {
         if let Some(cwd) = crate::session::pty::child_cwd(pid as i32) {
             if let Some(dir_name) = cwd.file_name().map(|n| n.to_string_lossy().to_string()) {
-                if pipeline.project_name != dir_name {
+                // Extract base name (without " (N)" suffix) for comparison
+                let current_base = pipeline.project_name
+                    .rfind(" (")
+                    .map(|i| &pipeline.project_name[..i])
+                    .unwrap_or(&pipeline.project_name);
+                // Only update if the directory actually changed
+                if current_base != dir_name {
                     pipeline.project_name = dir_name;
                 }
             }
