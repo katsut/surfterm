@@ -131,24 +131,27 @@ impl TextRenderer {
                         Weight::NORMAL
                     };
 
-                    let family = if font_family_str.is_empty() {
+                    // CJK/wide chars: use Hiragino Kaku Gothic explicitly.
+                    // Other chars: Monospace (or user-specified font).
+                    let family = if cell.wide {
+                        Family::Name("Hiragino Kaku Gothic Pro")
+                    } else if font_family_str.is_empty() {
                         Family::Monospace
                     } else {
                         Family::Name(&font_family_str)
                     };
 
                     let ch = cell.c.to_string();
+                    let color = Color::rgb(cell.fg.r, cell.fg.g, cell.fg.b);
                     let attrs = Attrs::new()
                         .family(family)
                         .weight(weight)
-                        .color(Color::rgb(cell.fg.r, cell.fg.g, cell.fg.b));
+                        .color(color);
 
-                    // Default attrs without family restriction — allows cosmic-text
-                    // to fall back to any system font (Hiragino etc.) for CJK/kanji.
                     buffer.set_rich_text(
                         &mut self.font_system,
                         [(&*ch, attrs)],
-                        &Attrs::new().weight(weight).color(Color::rgb(cell.fg.r, cell.fg.g, cell.fg.b)),
+                        &Attrs::new().color(color),
                         Shaping::Advanced,
                         None,
                     );
