@@ -1,4 +1,5 @@
 pub mod gatt;
+pub mod peripheral;
 
 use anyhow::{bail, Result};
 use tracing::instrument;
