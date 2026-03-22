@@ -333,9 +333,8 @@ impl App {
             })
             .collect();
 
-        // Active session goes to the back (bottom) of the list.
-        // Waiting sessions stay near the top — like a queue.
-        entries.sort_by_key(|e| e.is_active);
+        // Active session at the top of the list.
+        entries.sort_by_key(|e| !e.is_active);
 
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.update_side_panel(entries);
