@@ -49,6 +49,9 @@ pub enum AppEvent {
     NotificationReceived(String),
     /// BLE command received from mobile client.
     BleCommand(BleCommand),
+    /// BLE peripheral is ready (not Debug-printable).
+    #[allow(dead_code)]
+    BleReady(Arc<Mutex<BlePeripheralHandle>>),
 }
 
 /// Per-session pipeline holding the terminal emulator, PTY handles, and processing components.
@@ -407,7 +410,15 @@ impl App {
         let mut watcher = match notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
             if let Ok(event) = res {
                 if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
-                    let _ = proxy.send_event(AppEvent::ThemeChanged);
+                    // Only react to theme.toml changes
+                    let is_theme = event.paths.iter().any(|p| {
+                        p.file_name()
+                            .map(|n| n == "theme.toml")
+                            .unwrap_or(false)
+                    });
+                    if is_theme {
+                        let _ = proxy.send_event(AppEvent::ThemeChanged);
+                    }
                 }
             }
         }) {
@@ -736,26 +747,26 @@ impl App {
         });
     }
 
-    /// Start BLE peripheral and forward events to the event loop.
+    /// Start BLE peripheral asynchronously and forward events to the event loop.
+    /// The BLE handle is sent via AppEvent::BleReady when initialization completes.
     fn start_ble_peripheral(
         proxy: EventLoopProxy<AppEvent>,
         tokio_handle: &tokio::runtime::Handle,
     ) -> Option<Arc<Mutex<BlePeripheralHandle>>> {
-        let proxy_clone = proxy.clone();
-        let handle_result = tokio_handle.block_on(async {
-            crate::ble::peripheral::start_peripheral().await
-        });
+        let proxy_cmd = proxy.clone();
+        let proxy_ready = proxy.clone();
 
-        match handle_result {
-            Ok((handle, mut event_rx)) => {
-                let ble_handle = Arc::new(Mutex::new(handle));
+        tokio_handle.spawn(async move {
+            match crate::ble::peripheral::start_peripheral().await {
+                Ok((handle, mut event_rx)) => {
+                    let ble_handle = Arc::new(Mutex::new(handle));
+                    let _ = proxy_ready.send_event(AppEvent::BleReady(Arc::clone(&ble_handle)));
 
-                // Forward BLE events to app event loop
-                tokio_handle.spawn(async move {
+                    // Forward BLE events to app event loop
                     while let Some(event) = event_rx.recv().await {
                         match event {
                             BleEvent::CommandReceived(cmd) => {
-                                let _ = proxy_clone.send_event(AppEvent::BleCommand(cmd));
+                                let _ = proxy_cmd.send_event(AppEvent::BleCommand(cmd));
                             }
                             BleEvent::ClientSubscribed => {
                                 tracing::info!("BLE client subscribed");
@@ -765,15 +776,14 @@ impl App {
                             }
                         }
                     }
-                });
+                }
+                Err(e) => {
+                    tracing::warn!("BLE peripheral not available: {e}");
+                }
+            }
+        });
 
-                Some(ble_handle)
-            }
-            Err(e) => {
-                tracing::warn!("BLE peripheral not available: {e}");
-                None
-            }
-        }
+        None // handle will be set via BleReady event
     }
 
     /// Send current session list to BLE subscribers.
@@ -1252,6 +1262,11 @@ impl ApplicationHandler<AppEvent> for App {
                         }
                     }
                 }
+            }
+            AppEvent::BleReady(handle) => {
+                tracing::info!("BLE peripheral ready");
+                self.ble_handle = Some(handle);
+                self.notify_ble_sessions();
             }
             AppEvent::BleCommand(cmd) => {
                 tracing::info!(?cmd, "BLE command received");
