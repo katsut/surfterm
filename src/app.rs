@@ -513,8 +513,14 @@ impl App {
             self.spawn_session();
         } else if row >= 2 {
             // Session entry; row 2 = sessions[0], row 3 = sessions[1], etc.
+            // Use the side panel's sorted sessions list (matches visual order).
             let session_index = row - 2;
-            if let Some(id) = self.session_order.get(session_index).copied() {
+            let session_id = self
+                .renderer
+                .as_ref()
+                .and_then(|r| r.side_panel.sessions.get(session_index))
+                .map(|e| e.id);
+            if let Some(id) = session_id {
                 self.switch_to_session(id);
             }
         }
@@ -604,7 +610,12 @@ impl App {
                 return CursorIcon::Pointer;
             } else if row >= 2 {
                 let session_index = row - 2;
-                if session_index < self.session_order.len() {
+                let has_session = self
+                    .renderer
+                    .as_ref()
+                    .map(|r| session_index < r.side_panel.sessions.len())
+                    .unwrap_or(false);
+                if has_session {
                     return CursorIcon::Pointer;
                 }
             }
