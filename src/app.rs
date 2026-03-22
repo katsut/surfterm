@@ -900,8 +900,33 @@ impl ApplicationHandler<AppEvent> for App {
                                 }
                                 return;
                             }
+                            "w" => {
+                                if let Some(active_id) = self.active_session {
+                                    self.kill_session(active_id);
+                                    if self.sessions.is_empty() {
+                                        event_loop.exit();
+                                    }
+                                }
+                                if let Some(window) = self.window.as_ref() {
+                                    window.request_redraw();
+                                }
+                                return;
+                            }
                             "0" => {
                                 self.reset_font_size();
+                                if let Some(window) = self.window.as_ref() {
+                                    window.request_redraw();
+                                }
+                                return;
+                            }
+                            // Cmd+1-9: switch to session by index in session_order
+                            n if n.len() == 1 && n.as_bytes()[0] >= b'1' && n.as_bytes()[0] <= b'9' => {
+                                let idx = (n.as_bytes()[0] - b'1') as usize;
+                                if idx < self.session_order.len() {
+                                    let target = self.session_order[idx];
+                                    self.switch_to_session(target);
+                                    self.input_handler.set_mode(InputMode::Insert);
+                                }
                                 if let Some(window) = self.window.as_ref() {
                                     window.request_redraw();
                                 }
