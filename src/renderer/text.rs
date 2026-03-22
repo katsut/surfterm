@@ -106,15 +106,22 @@ impl TextRenderer {
 
             for (row_idx, row_cells) in region.cells.iter().enumerate() {
                 for (col_idx, cell) in row_cells.iter().enumerate() {
-                    // Skip empty/space cells for performance.
-                    if cell.c == ' ' {
+                    // Skip empty/space cells and wide char spacers.
+                    if cell.c == ' ' || cell.wide_spacer {
                         continue;
                     }
+
+                    // Wide characters get double cell width.
+                    let char_cell_width = if cell.wide {
+                        region.cell_width * 2.0
+                    } else {
+                        region.cell_width
+                    };
 
                     let mut buffer = Buffer::new(&mut self.font_system, metrics);
                     buffer.set_size(
                         &mut self.font_system,
-                        Some(region.cell_width),
+                        Some(char_cell_width),
                         Some(region.cell_height),
                     );
 

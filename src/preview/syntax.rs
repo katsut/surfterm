@@ -153,7 +153,7 @@ pub fn to_terminal_cells(
                 bg: DEFAULT_BG,
                 bold: false,
                 italic: false,
-                underline: false,
+                underline: false, wide: false, wide_spacer: false,
             });
         }
 
@@ -169,7 +169,7 @@ pub fn to_terminal_cells(
                     bg: DEFAULT_BG,
                     bold: false,
                     italic: false,
-                    underline: false,
+                    underline: false, wide: false, wide_spacer: false,
                 });
             }
         }
@@ -182,7 +182,7 @@ pub fn to_terminal_cells(
                 bg: DEFAULT_BG,
                 bold: false,
                 italic: false,
-                underline: false,
+                underline: false, wide: false, wide_spacer: false,
             });
         }
 
@@ -198,7 +198,7 @@ pub fn to_terminal_cells(
                 bg: DEFAULT_BG,
                 bold: false,
                 italic: false,
-                underline: false,
+                underline: false, wide: false, wide_spacer: false,
             };
             cols
         ];

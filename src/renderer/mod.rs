@@ -312,7 +312,7 @@ impl Renderer {
                         bg,
                         bold: false,
                         italic: false,
-                        underline: false,
+                        underline: false, wide: false, wide_spacer: false,
                     };
                     regions.push(RenderRegion {
                         cells: vec![vec![cursor_cell]],
@@ -361,11 +361,11 @@ impl Renderer {
                 let dim_fg = self.panel_colors.state_idle;
                 let bg = self.panel_colors.background;
                 let mut overflow_row: Vec<TerminalCell> = text.chars().map(|c| {
-                    TerminalCell { c, fg: dim_fg, bg, bold: false, italic: true, underline: false }
+                    TerminalCell { c, fg: dim_fg, bg, bold: false, italic: true, underline: false, wide: false, wide_spacer: false }
                 }).collect();
                 while overflow_row.len() < main_cols {
                     overflow_row.push(TerminalCell {
-                        c: ' ', fg: dim_fg, bg, bold: false, italic: false, underline: false,
+                        c: ' ', fg: dim_fg, bg, bold: false, italic: false, underline: false, wide: false, wide_spacer: false,
                     });
                 }
                 let origin_y = main_rect.y + current_row as f32 * self.grid.cell_height;
@@ -423,7 +423,7 @@ impl Renderer {
                             bg: divider_bg,
                             bold: false,
                             italic: false,
-                            underline: false,
+                            underline: false, wide: false, wide_spacer: false,
                         }]
                     })
                     .collect();
@@ -453,7 +453,7 @@ impl Renderer {
                         bg: divider_bg,
                         bold: false,
                         italic: false,
-                        underline: false,
+                        underline: false, wide: false, wide_spacer: false,
                     }]);
                 }
                 regions.push(RenderRegion {

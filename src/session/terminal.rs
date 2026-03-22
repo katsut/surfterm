@@ -35,6 +35,10 @@ pub struct TerminalCell {
     pub bold: bool,
     pub italic: bool,
     pub underline: bool,
+    /// This cell is a wide character (occupies 2 columns).
+    pub wide: bool,
+    /// This cell is a spacer for the preceding wide character (should be skipped).
+    pub wide_spacer: bool,
 }
 
 impl Default for TerminalCell {
@@ -46,6 +50,8 @@ impl Default for TerminalCell {
             bold: false,
             italic: false,
             underline: false,
+            wide: false,
+            wide_spacer: false,
         }
     }
 }
@@ -227,6 +233,8 @@ impl Terminal {
                     bold: cell.flags.contains(Flags::BOLD),
                     italic: cell.flags.contains(Flags::ITALIC),
                     underline: cell.flags.intersects(Flags::ALL_UNDERLINES),
+                    wide: cell.flags.contains(Flags::WIDE_CHAR),
+                    wide_spacer: cell.flags.contains(Flags::WIDE_CHAR_SPACER),
                 });
             }
 

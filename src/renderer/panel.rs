@@ -226,7 +226,7 @@ impl SidePanel {
                     bg,
                     bold: self.selected_index == 0,
                     italic: false,
-                    underline: false,
+                    underline: false, wide: false, wide_spacer: false,
                 });
             }
             while row.len() < cols {
@@ -236,7 +236,7 @@ impl SidePanel {
                     bg,
                     bold: false,
                     italic: false,
-                    underline: false,
+                    underline: false, wide: false, wide_spacer: false,
                 });
             }
             result.push(row);
@@ -252,7 +252,7 @@ impl SidePanel {
                     bg: colors.background,
                     bold: false,
                     italic: false,
-                    underline: false,
+                    underline: false, wide: false, wide_spacer: false,
                 });
             }
             result.push(sep_row);
@@ -297,7 +297,7 @@ impl SidePanel {
                     bg,
                     bold: is_selected,
                     italic: false,
-                    underline: false,
+                    underline: false, wide: false, wide_spacer: false,
                 });
             }
             while row.len() < cols {
@@ -307,7 +307,7 @@ impl SidePanel {
                     bg,
                     bold: false,
                     italic: false,
-                    underline: false,
+                    underline: false, wide: false, wide_spacer: false,
                 });
             }
             result.push(row);
@@ -409,7 +409,7 @@ impl CardStack {
         for _ in 0..cols {
             border_row.push(TerminalCell {
                 c: '\u{2500}', // ─
-                fg: border_fg, bg, bold: false, italic: false, underline: false,
+                fg: border_fg, bg, bold: false, italic: false, underline: false, wide: false, wide_spacer: false,
             });
         }
 
@@ -417,7 +417,7 @@ impl CardStack {
         let mut content_row = Vec::with_capacity(cols);
         content_row.push(TerminalCell {
             c: '\u{2595}', // ▕
-            fg: border_fg, bg, bold: false, italic: false, underline: false,
+            fg: border_fg, bg, bold: false, italic: false, underline: false, wide: false, wide_spacer: false,
         });
 
         let inner_cols = cols.saturating_sub(1); // only left border
@@ -453,7 +453,7 @@ impl CardStack {
         let border_row: Vec<TerminalCell> = (0..cols)
             .map(|_| TerminalCell {
                 c: '\u{2500}', // ─
-                fg: border_fg, bg, bold: false, italic: false, underline: false,
+                fg: border_fg, bg, bold: false, italic: false, underline: false, wide: false, wide_spacer: false,
             })
             .collect();
 
@@ -484,22 +484,22 @@ impl CardStack {
         for i in 0..cols {
             if i == 0 {
                 row.push(TerminalCell {
-                    c: ' ', fg: title_fg, bg, bold: card.is_active, italic: false, underline: false,
+                    c: ' ', fg: title_fg, bg, bold: card.is_active, italic: false, underline: false, wide: false, wide_spacer: false,
                 });
             } else if i >= 1 && i < 1 + name_display_len {
                 row.push(TerminalCell {
-                    c: name_chars[i - 1], fg: title_fg, bg, bold: card.is_active, italic: false, underline: false,
+                    c: name_chars[i - 1], fg: title_fg, bg, bold: card.is_active, italic: false, underline: false, wide: false, wide_spacer: false,
                 });
             } else if i >= state_start && i < state_start + state_chars.len() {
                 let si = i - state_start;
                 let ch = state_chars[si];
                 let fg = if ch != '[' && ch != ']' { state_fg } else { border_fg };
                 row.push(TerminalCell {
-                    c: ch, fg, bg, bold: false, italic: false, underline: false,
+                    c: ch, fg, bg, bold: false, italic: false, underline: false, wide: false, wide_spacer: false,
                 });
             } else {
                 row.push(TerminalCell {
-                    c: ' ', fg: border_fg, bg, bold: false, italic: false, underline: false,
+                    c: ' ', fg: border_fg, bg, bold: false, italic: false, underline: false, wide: false, wide_spacer: false,
                 });
             }
         }
@@ -575,14 +575,14 @@ impl CardStack {
             };
             let bold = card.is_active && i >= name_start && i < name_end;
             row.push(TerminalCell {
-                c: ch, fg, bg, bold, italic: false, underline: false,
+                c: ch, fg, bg, bold, italic: false, underline: false, wide: false, wide_spacer: false,
             });
         }
 
         // Fill remaining with ─
         while row.len() < cols {
             row.push(TerminalCell {
-                c: '\u{2500}', fg: border_fg, bg, bold: false, italic: false, underline: false,
+                c: '\u{2500}', fg: border_fg, bg, bold: false, italic: false, underline: false, wide: false, wide_spacer: false,
             });
         }
 
@@ -829,7 +829,7 @@ impl SessionList {
                         bg,
                         bold: is_selected,
                         italic: false,
-                        underline: false,
+                        underline: false, wide: false, wide_spacer: false,
                     });
                 }
                 while row.len() < cols {
@@ -839,7 +839,7 @@ impl SessionList {
                         bg,
                         bold: false,
                         italic: false,
-                        underline: false,
+                        underline: false, wide: false, wide_spacer: false,
                     });
                 }
                 result.push(row);
@@ -989,7 +989,7 @@ impl MessagePanel {
                     bg: colors.background,
                     bold: false,
                     italic: false,
-                    underline: false,
+                    underline: false, wide: false, wide_spacer: false,
                 });
             }
             // Pad remaining columns with spaces.
@@ -1000,7 +1000,7 @@ impl MessagePanel {
                     bg: colors.background,
                     bold: false,
                     italic: false,
-                    underline: false,
+                    underline: false, wide: false, wide_spacer: false,
                 });
             }
             result.push(row);
@@ -1016,7 +1016,7 @@ impl MessagePanel {
                     bg: colors.background,
                     bold: false,
                     italic: false,
-                    underline: false,
+                    underline: false, wide: false, wide_spacer: false,
                 });
             }
             result.push(row);
@@ -1203,7 +1203,7 @@ fn make_row_colored(text: &str, cols: usize, fg: Rgb, bg: Rgb) -> Vec<TerminalCe
             bg,
             bold: false,
             italic: false,
-            underline: false,
+            underline: false, wide: false, wide_spacer: false,
         });
     }
     while row.len() < cols {
@@ -1213,7 +1213,7 @@ fn make_row_colored(text: &str, cols: usize, fg: Rgb, bg: Rgb) -> Vec<TerminalCe
             bg,
             bold: false,
             italic: false,
-            underline: false,
+            underline: false, wide: false, wide_spacer: false,
         });
     }
     row
