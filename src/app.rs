@@ -14,6 +14,8 @@ use winit::{
     window::{CursorIcon, Window, WindowId},
 };
 
+use crate::ble::gatt::{BleCommand, SessionStatusData};
+use crate::ble::peripheral::{BleEvent, BlePeripheralHandle};
 use crate::config::theme::ThemeManager;
 use crate::detector::patterns::default_claude_code_state_patterns;
 use crate::detector::StateDetector;
@@ -45,6 +47,8 @@ pub enum AppEvent {
     /// External notification received (e.g. Claude Code Notification hook).
     /// Contains the session ID string from the hook.
     NotificationReceived(String),
+    /// BLE command received from mobile client.
+    BleCommand(BleCommand),
 }
 
 /// Per-session pipeline holding the terminal emulator, PTY handles, and processing components.
@@ -90,6 +94,8 @@ struct App {
     cursor_blink_at: std::time::Instant,
     /// Path to the Unix socket for external notifications.
     socket_path: String,
+    /// BLE peripheral handle for updating session data.
+    ble_handle: Option<Arc<Mutex<BlePeripheralHandle>>>,
 }
 
 impl App {
@@ -98,6 +104,9 @@ impl App {
 
         // Start Unix socket listener for external notifications
         Self::start_notification_listener(&socket_path, event_proxy.clone(), &tokio_handle);
+
+        // Start BLE peripheral server
+        let ble_handle = Self::start_ble_peripheral(event_proxy.clone(), &tokio_handle);
 
         Self {
             window: None,
@@ -117,6 +126,7 @@ impl App {
             cursor_visible: true,
             cursor_blink_at: std::time::Instant::now(),
             socket_path,
+            ble_handle,
         }
     }
 
@@ -342,6 +352,9 @@ impl App {
 
         // Also update the card stack
         self.update_card_stack();
+
+        // Notify BLE subscribers
+        self.notify_ble_sessions();
     }
 
     /// Build card stack from current sessions and push to renderer.
@@ -721,6 +734,77 @@ impl App {
                 }
             }
         });
+    }
+
+    /// Start BLE peripheral and forward events to the event loop.
+    fn start_ble_peripheral(
+        proxy: EventLoopProxy<AppEvent>,
+        tokio_handle: &tokio::runtime::Handle,
+    ) -> Option<Arc<Mutex<BlePeripheralHandle>>> {
+        let proxy_clone = proxy.clone();
+        let handle_result = tokio_handle.block_on(async {
+            crate::ble::peripheral::start_peripheral().await
+        });
+
+        match handle_result {
+            Ok((handle, mut event_rx)) => {
+                let ble_handle = Arc::new(Mutex::new(handle));
+
+                // Forward BLE events to app event loop
+                tokio_handle.spawn(async move {
+                    while let Some(event) = event_rx.recv().await {
+                        match event {
+                            BleEvent::CommandReceived(cmd) => {
+                                let _ = proxy_clone.send_event(AppEvent::BleCommand(cmd));
+                            }
+                            BleEvent::ClientSubscribed => {
+                                tracing::info!("BLE client subscribed");
+                            }
+                            BleEvent::ClientUnsubscribed => {
+                                tracing::info!("BLE client unsubscribed");
+                            }
+                        }
+                    }
+                });
+
+                Some(ble_handle)
+            }
+            Err(e) => {
+                tracing::warn!("BLE peripheral not available: {e}");
+                None
+            }
+        }
+    }
+
+    /// Send current session list to BLE subscribers.
+    fn notify_ble_sessions(&self) {
+        if let Some(ble_handle) = &self.ble_handle {
+            let sessions: Vec<SessionStatusData> = self
+                .session_order
+                .iter()
+                .filter_map(|id| {
+                    let pipeline = self.sessions.get(id)?;
+                    Some(SessionStatusData {
+                        id: id.to_string(),
+                        project_name: pipeline.project_name.clone(),
+                        state: format!("{:?}", pipeline.detector.current_state()),
+                        layer: if self.active_session == Some(*id) {
+                            "Foreground".to_string()
+                        } else {
+                            "Background".to_string()
+                        },
+                    })
+                })
+                .collect();
+
+            let handle = Arc::clone(ble_handle);
+            self.tokio_handle.spawn(async move {
+                let mut h = handle.lock().await;
+                if let Err(e) = h.update_sessions(&sessions).await {
+                    tracing::debug!("BLE session update failed: {e}");
+                }
+            });
+        }
     }
 }
 
@@ -1166,6 +1250,40 @@ impl ApplicationHandler<AppEvent> for App {
                         if let Some(window) = self.window.as_ref() {
                             window.request_redraw();
                         }
+                    }
+                }
+            }
+            AppEvent::BleCommand(cmd) => {
+                tracing::info!(?cmd, "BLE command received");
+                match cmd {
+                    BleCommand::SwitchSession { session_id } => {
+                        if let Ok(target_id) = session_id.parse::<uuid::Uuid>() {
+                            let target = SessionId::from(target_id);
+                            if self.sessions.contains_key(&target) {
+                                self.switch_to_session(target);
+                                if let Some(window) = self.window.as_ref() {
+                                    window.request_redraw();
+                                }
+                            }
+                        }
+                    }
+                    BleCommand::Respond { session_id, payload } => {
+                        if let Ok(target_id) = session_id.parse::<uuid::Uuid>() {
+                            let target = SessionId::from(target_id);
+                            if let Some(pipeline) = self.sessions.get(&target) {
+                                let writer = Arc::clone(&pipeline.writer);
+                                let bytes = payload.into_bytes();
+                                self.tokio_handle.spawn(async move {
+                                    let mut w = writer.lock().await;
+                                    let _ = w.write_all(&bytes);
+                                    let _ = w.write_all(b"\n");
+                                    let _ = w.flush();
+                                });
+                            }
+                        }
+                    }
+                    BleCommand::PinSession { .. } => {
+                        // Pin functionality not yet implemented
                     }
                 }
             }
