@@ -1,14 +1,12 @@
 //! End-to-end tests for Surfterm.
 //!
 //! These tests exercise full pipelines across multiple modules, simulating
-//! realistic usage scenarios without requiring a GPU or BLE hardware.
+//! realistic usage scenarios without requiring a GPU.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use surfterm::ble::gatt::{GattService, SessionStatusData};
-use surfterm::ble::{ChunkProtocol, Chunk};
 use surfterm::config::ConfigEngine;
 use surfterm::detector::patterns::{default_claude_code_state_patterns, load_patterns_from_toml};
 use surfterm::detector::StateDetector;
@@ -621,109 +619,7 @@ fn e2e_file_watcher_preview_pipeline() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 7. BLE data pipeline E2E
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Tests the full BLE data pipeline: create session data → serialize via
-/// GattService → chunk with ChunkProtocol → serialize/deserialize chunks →
-/// reassemble → deserialize and verify integrity.
-#[test]
-fn e2e_ble_data_pipeline() {
-    // Create session status data.
-    let sessions = vec![
-        SessionStatusData {
-            id: "session-001".to_string(),
-            project_name: "api-server".to_string(),
-            state: "Running".to_string(),
-            layer: "Background".to_string(),
-        },
-        SessionStatusData {
-            id: "session-002".to_string(),
-            project_name: "web-frontend".to_string(),
-            state: "WaitingForInput".to_string(),
-            layer: "Foreground".to_string(),
-        },
-        SessionStatusData {
-            id: "session-003".to_string(),
-            project_name: "cli-tool".to_string(),
-            state: "Idle".to_string(),
-            layer: "Pinned".to_string(),
-        },
-    ];
-
-    // Serialize via GattService.
-    let payload = GattService::session_list_payload(&sessions);
-    assert!(!payload.is_empty());
-
-    // Chunk with a small MTU (simulating BLE constraint).
-    let protocol = ChunkProtocol::new(64); // MTU=64 bytes
-    let chunks = protocol.chunk_data(&payload);
-    assert!(
-        chunks.len() > 1,
-        "payload should need multiple chunks with small MTU"
-    );
-
-    // Verify chunk metadata.
-    let expected_total = chunks.len() as u16;
-    for (i, chunk) in chunks.iter().enumerate() {
-        assert_eq!(chunk.sequence, i as u16);
-        assert_eq!(chunk.total, expected_total);
-    }
-
-    // Serialize each chunk to wire format and back.
-    let wire_chunks: Vec<Chunk> = chunks
-        .iter()
-        .map(|c| {
-            let bytes = c.to_bytes();
-            Chunk::from_bytes(&bytes).unwrap()
-        })
-        .collect();
-
-    // Reassemble.
-    let reassembled = ChunkProtocol::reassemble(&wire_chunks).unwrap();
-    assert_eq!(reassembled, payload, "reassembled data should match original");
-
-    // Deserialize back to session data.
-    let restored: Vec<SessionStatusData> =
-        serde_json::from_slice(&reassembled).expect("should deserialize to session data");
-    assert_eq!(restored.len(), 3);
-    assert_eq!(restored[0].id, "session-001");
-    assert_eq!(restored[0].project_name, "api-server");
-    assert_eq!(restored[1].state, "WaitingForInput");
-    assert_eq!(restored[2].layer, "Pinned");
-}
-
-/// Tests BLE command parsing through the full pipeline.
-#[test]
-fn e2e_ble_command_pipeline() {
-    use surfterm::ble::gatt::{validate_command, BleCommand};
-
-    // Simulate a mobile client sending a "respond" command.
-    let json = r#"{"type":"respond","session_id":"session-001","payload":"yes, proceed"}"#;
-    let cmd = GattService::parse_command(json.as_bytes()).unwrap();
-    validate_command(&cmd).unwrap();
-
-    match &cmd {
-        BleCommand::Respond {
-            session_id,
-            payload,
-        } => {
-            assert_eq!(session_id, "session-001");
-            assert_eq!(payload, "yes, proceed");
-        }
-        _ => panic!("expected Respond command"),
-    }
-
-    // Simulate chunking the command over BLE.
-    let protocol = ChunkProtocol::new(32);
-    let chunks = protocol.chunk_data(json.as_bytes());
-    let reassembled = ChunkProtocol::reassemble(&chunks).unwrap();
-    let restored_cmd = GattService::parse_command(&reassembled).unwrap();
-    assert_eq!(cmd, restored_cmd);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 8. LLM pipeline E2E (with mock)
+// 7. LLM pipeline E2E (with mock)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Tests the LLM pipeline: MockLlmBackend → LlmRuntime → LlmScheduler with

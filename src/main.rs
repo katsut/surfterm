@@ -2,7 +2,6 @@ use anyhow::Result;
 use tracing::info;
 
 mod app;
-mod ble;
 mod config;
 mod ws;
 mod detector;
