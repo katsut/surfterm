@@ -14,8 +14,9 @@ use winit::{
     window::{CursorIcon, Window, WindowId},
 };
 
-use crate::ble::gatt::{BleCommand, SessionStatusData};
-use crate::ble::peripheral::{BleEvent, BlePeripheralHandle};
+use crate::ws::{SessionStatusData, WsCommand, WsEvent, WsOutMessage};
+use crate::ws::bonjour::BonjourHandle;
+use crate::ws::server::WsServerHandle;
 use crate::config::theme::ThemeManager;
 use crate::detector::patterns::default_claude_code_state_patterns;
 use crate::detector::StateDetector;
@@ -47,13 +48,12 @@ pub enum AppEvent {
     /// External notification received (e.g. Claude Code Notification hook).
     /// Contains the session ID string from the hook.
     NotificationReceived(String),
-    /// BLE command received from mobile client.
-    BleCommand(BleCommand),
-    /// BLE peripheral is ready (not Debug-printable).
-    #[allow(dead_code)]
-    BleReady(Arc<Mutex<BlePeripheralHandle>>),
-    /// BLE client connected or disconnected.
-    BleClientChanged(bool),
+    /// WebSocket command received from mobile client.
+    WsCommand(WsCommand),
+    /// WebSocket server is ready.
+    WsReady(WsServerHandle),
+    /// WebSocket client connected or disconnected.
+    WsClientChanged(bool),
 }
 
 /// Per-session pipeline holding the terminal emulator, PTY handles, and processing components.
@@ -99,10 +99,12 @@ struct App {
     cursor_blink_at: std::time::Instant,
     /// Path to the Unix socket for external notifications.
     socket_path: String,
-    /// BLE peripheral handle for updating session data.
-    ble_handle: Option<Arc<Mutex<BlePeripheralHandle>>>,
-    /// Number of BLE clients currently connected.
-    ble_client_count: usize,
+    /// WebSocket server handle for broadcasting to mobile clients.
+    ws_handle: Option<WsServerHandle>,
+    /// Bonjour mDNS advertisement handle.
+    bonjour_handle: Option<BonjourHandle>,
+    /// Number of WebSocket clients currently connected.
+    ws_client_count: usize,
 }
 
 impl App {
@@ -111,9 +113,6 @@ impl App {
 
         // Start Unix socket listener for external notifications
         Self::start_notification_listener(&socket_path, event_proxy.clone(), &tokio_handle);
-
-        // BLE peripheral starts OFF — user can enable via View > Toggle BLE (Cmd+Shift+B)
-        let ble_handle = None;
 
         Self {
             window: None,
@@ -133,8 +132,9 @@ impl App {
             cursor_visible: true,
             cursor_blink_at: std::time::Instant::now(),
             socket_path,
-            ble_handle,
-            ble_client_count: 0,
+            ws_handle: None,
+            bonjour_handle: None,
+            ws_client_count: 0,
         }
     }
 
@@ -361,8 +361,8 @@ impl App {
         // Also update the card stack
         self.update_card_stack();
 
-        // Notify BLE subscribers
-        self.notify_ble_sessions();
+        // Notify WebSocket subscribers
+        self.notify_ws_sessions();
     }
 
     /// Build card stack from current sessions and push to renderer.
@@ -752,50 +752,46 @@ impl App {
         });
     }
 
-    /// Start BLE peripheral asynchronously and forward events to the event loop.
-    /// The BLE handle is sent via AppEvent::BleReady when initialization completes.
-    fn start_ble_peripheral(
+    /// Start the WebSocket server and Bonjour advertisement.
+    fn start_ws_server(
         proxy: EventLoopProxy<AppEvent>,
         tokio_handle: &tokio::runtime::Handle,
-    ) -> Option<Arc<Mutex<BlePeripheralHandle>>> {
+    ) {
         let proxy_cmd = proxy.clone();
-        let proxy_ready = proxy.clone();
+        let proxy_ready = proxy;
 
         tokio_handle.spawn(async move {
-            match crate::ble::peripheral::start_peripheral().await {
-                Ok((handle, mut event_rx)) => {
-                    let ble_handle = Arc::new(Mutex::new(handle));
-                    let _ = proxy_ready.send_event(AppEvent::BleReady(Arc::clone(&ble_handle)));
+            let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<WsEvent>(64);
+            match crate::ws::server::start_ws_server(event_tx).await {
+                Ok(handle) => {
+                    let _ = proxy_ready.send_event(AppEvent::WsReady(handle));
 
-                    // Forward BLE events to app event loop
                     while let Some(event) = event_rx.recv().await {
                         match event {
-                            BleEvent::CommandReceived(cmd) => {
-                                let _ = proxy_cmd.send_event(AppEvent::BleCommand(cmd));
+                            WsEvent::CommandReceived(cmd) => {
+                                let _ = proxy_cmd.send_event(AppEvent::WsCommand(cmd));
                             }
-                            BleEvent::ClientSubscribed => {
-                                tracing::info!("BLE client subscribed");
-                                let _ = proxy_cmd.send_event(AppEvent::BleClientChanged(true));
+                            WsEvent::ClientConnected => {
+                                tracing::info!("WebSocket client connected");
+                                let _ = proxy_cmd.send_event(AppEvent::WsClientChanged(true));
                             }
-                            BleEvent::ClientUnsubscribed => {
-                                tracing::info!("BLE client unsubscribed");
-                                let _ = proxy_cmd.send_event(AppEvent::BleClientChanged(false));
+                            WsEvent::ClientDisconnected => {
+                                tracing::info!("WebSocket client disconnected");
+                                let _ = proxy_cmd.send_event(AppEvent::WsClientChanged(false));
                             }
                         }
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("BLE peripheral not available: {e}");
+                    tracing::warn!("WebSocket server failed to start: {e}");
                 }
             }
         });
-
-        None // handle will be set via BleReady event
     }
 
-    /// Send current session list to BLE subscribers.
-    fn notify_ble_sessions(&self) {
-        if let Some(ble_handle) = &self.ble_handle {
+    /// Broadcast current session list to WebSocket clients.
+    fn notify_ws_sessions(&self) {
+        if let Some(ws_handle) = &self.ws_handle {
             let sessions: Vec<SessionStatusData> = self
                 .session_order
                 .iter()
@@ -814,13 +810,7 @@ impl App {
                 })
                 .collect();
 
-            let handle = Arc::clone(ble_handle);
-            self.tokio_handle.spawn(async move {
-                let mut h = handle.lock().await;
-                if let Err(e) = h.update_sessions(&sessions).await {
-                    tracing::debug!("BLE session update failed: {e}");
-                }
-            });
+            ws_handle.broadcast(&WsOutMessage::Sessions { data: sessions });
         }
     }
 }
@@ -1168,6 +1158,9 @@ impl ApplicationHandler<AppEvent> for App {
             AppEvent::PtyOutput { session_id, data } => {
                 tracing::debug!(bytes = data.len(), %session_id, "PTY output received");
 
+                let mut ws_pty_data: Option<(SessionId, Vec<u8>)> = None;
+                let mut ws_state_change: Option<(SessionId, SessionState)> = None;
+                let mut needs_auto_switch = false;
                 if let Some(pipeline) = self.sessions.get_mut(&session_id) {
                     // Update session name from child cwd (throttled to once per second)
                     update_session_name_from_cwd(pipeline);
@@ -1216,13 +1209,12 @@ impl ApplicationHandler<AppEvent> for App {
 
                     // Auto-switch: when a background session becomes WaitingForInput,
                     // bring it to the foreground so the user can respond immediately.
-                    if new_state == SessionState::WaitingForInput
+                    needs_auto_switch = new_state == SessionState::WaitingForInput
                         && prev_state != SessionState::WaitingForInput
-                        && self.active_session != Some(session_id)
-                    {
+                        && self.active_session != Some(session_id);
+                    if needs_auto_switch {
                         tracing::info!(%session_id, "Session waiting for input, switching to foreground");
                         self.active_session = Some(session_id);
-                        self.resize_active_session_to_card();
                     }
 
                     // Update state in renderer
@@ -1232,23 +1224,42 @@ impl ApplicationHandler<AppEvent> for App {
                         }
                     }
 
-                    // Stream terminal output to BLE for active session
-                    if self.active_session == Some(session_id) {
-                        if let Some(ble_handle) = &self.ble_handle {
-                            let text = String::from_utf8_lossy(&data).to_string();
-                            if !text.is_empty() {
-                                let handle = Arc::clone(ble_handle);
-                                self.tokio_handle.spawn(async move {
-                                    let mut h = handle.lock().await;
-                                    let _ = h.send_terminal_output(&text).await;
-                                });
-                            }
-                        }
+                    // Notify WebSocket clients about state changes
+                    if new_state != prev_state && self.ws_handle.is_some() {
+                        ws_state_change = Some((session_id, new_state));
                     }
 
-                    // Update side panel and card stack
-                    self.update_side_panel();
+                    // Forward raw PTY output to WebSocket clients
+                    if self.ws_handle.is_some() {
+                        ws_pty_data = Some((session_id, data.clone()));
+                    }
+                } // end: if let Some(pipeline)
+
+                // Deferred actions outside pipeline borrow
+                if needs_auto_switch {
+                    self.resize_active_session_to_card();
                 }
+
+                // Broadcast raw PTY output via WebSocket
+                if let (Some((sid, raw_data)), Some(ws_handle)) = (ws_pty_data, &self.ws_handle) {
+                    use base64::Engine;
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(&raw_data);
+                    ws_handle.broadcast(&WsOutMessage::PtyOutput {
+                        session_id: sid.to_string(),
+                        data: b64,
+                    });
+                }
+
+                // Broadcast state change via WebSocket
+                if let (Some((sid, state)), Some(ws_handle)) = (ws_state_change, &self.ws_handle) {
+                    ws_handle.broadcast(&WsOutMessage::SessionStateChanged {
+                        session_id: sid.to_string(),
+                        state: format!("{:?}", state),
+                    });
+                }
+
+                // Update side panel and card stack
+                self.update_side_panel();
 
                 // Request redraw
                 if let Some(window) = self.window.as_ref() {
@@ -1284,31 +1295,42 @@ impl ApplicationHandler<AppEvent> for App {
                     }
                 }
             }
-            AppEvent::BleClientChanged(subscribed) => {
-                if subscribed {
-                    self.ble_client_count = self.ble_client_count.saturating_add(1);
+            AppEvent::WsClientChanged(connected) => {
+                if connected {
+                    self.ws_client_count = self.ws_client_count.saturating_add(1);
                 } else {
-                    self.ble_client_count = self.ble_client_count.saturating_sub(1);
+                    self.ws_client_count = self.ws_client_count.saturating_sub(1);
                 }
                 if let Some(renderer) = self.renderer.as_mut() {
-                    renderer.side_panel.ble_clients = self.ble_client_count;
+                    renderer.side_panel.ws_clients = self.ws_client_count;
+                }
+                if connected {
+                    self.notify_ws_sessions();
                 }
                 if let Some(window) = self.window.as_ref() {
                     window.request_redraw();
                 }
             }
-            AppEvent::BleReady(handle) => {
-                tracing::info!("BLE peripheral ready");
-                self.ble_handle = Some(handle);
-                self.notify_ble_sessions();
+            AppEvent::WsReady(handle) => {
+                tracing::info!(port = handle.port(), "WebSocket server ready");
+                match crate::ws::bonjour::advertise(handle.port()) {
+                    Ok(bonjour) => {
+                        self.bonjour_handle = Some(bonjour);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Bonjour advertisement failed: {e}");
+                    }
+                }
+                self.ws_handle = Some(handle);
+                self.notify_ws_sessions();
                 if let Some(window) = self.window.as_ref() {
                     window.request_redraw();
                 }
             }
-            AppEvent::BleCommand(cmd) => {
-                tracing::info!(?cmd, "BLE command received");
+            AppEvent::WsCommand(cmd) => {
+                tracing::info!(?cmd, "WebSocket command received");
                 match cmd {
-                    BleCommand::SwitchSession { session_id } => {
+                    WsCommand::SwitchSession { session_id } => {
                         if let Ok(target_id) = session_id.parse::<uuid::Uuid>() {
                             let target = SessionId::from(target_id);
                             if self.sessions.contains_key(&target) {
@@ -1319,7 +1341,7 @@ impl ApplicationHandler<AppEvent> for App {
                             }
                         }
                     }
-                    BleCommand::Respond { session_id, payload } => {
+                    WsCommand::Respond { session_id, payload } => {
                         if let Ok(target_id) = session_id.parse::<uuid::Uuid>() {
                             let target = SessionId::from(target_id);
                             if let Some(pipeline) = self.sessions.get(&target) {
@@ -1334,7 +1356,37 @@ impl ApplicationHandler<AppEvent> for App {
                             }
                         }
                     }
-                    BleCommand::PinSession { .. } => {
+                    WsCommand::PtyInput { session_id, data } => {
+                        if let Ok(target_id) = session_id.parse::<uuid::Uuid>() {
+                            let target = SessionId::from(target_id);
+                            if let Some(pipeline) = self.sessions.get(&target) {
+                                let writer = Arc::clone(&pipeline.writer);
+                                self.tokio_handle.spawn(async move {
+                                    let mut w = writer.lock().await;
+                                    let _ = w.write_all(&data);
+                                    let _ = w.flush();
+                                });
+                            }
+                        }
+                    }
+                    WsCommand::Resize { session_id, cols, rows } => {
+                        if let Ok(target_id) = session_id.parse::<uuid::Uuid>() {
+                            let target = SessionId::from(target_id);
+                            if let Some(pipeline) = self.sessions.get(&target) {
+                                let master = Arc::clone(&pipeline.master);
+                                self.tokio_handle.spawn(async move {
+                                    let m = master.lock().await;
+                                    let _ = m.resize(PtySize {
+                                        rows,
+                                        cols,
+                                        pixel_width: 0,
+                                        pixel_height: 0,
+                                    });
+                                });
+                            }
+                        }
+                    }
+                    WsCommand::PinSession { .. } => {
                         // Pin functionality not yet implemented
                     }
                 }
@@ -1386,19 +1438,24 @@ impl ApplicationHandler<AppEvent> for App {
                         window.request_redraw();
                     }
                 }
-                MenuAction::ToggleBle => {
-                    if self.ble_handle.is_some() {
-                        self.ble_handle = None;
-                        if let Some(renderer) = self.renderer.as_mut() {
-                            renderer.side_panel.ble_active = false;
+                MenuAction::ToggleWs => {
+                    if self.ws_handle.is_some() {
+                        if let Some(bonjour) = self.bonjour_handle.take() {
+                            bonjour.shutdown();
                         }
-                        tracing::info!("BLE peripheral stopped");
+                        self.ws_handle = None;
+                        self.ws_client_count = 0;
+                        if let Some(renderer) = self.renderer.as_mut() {
+                            renderer.side_panel.ws_active = false;
+                            renderer.side_panel.ws_clients = 0;
+                        }
+                        tracing::info!("WebSocket server stopped");
                     } else {
-                        Self::start_ble_peripheral(self.event_proxy.clone(), &self.tokio_handle);
+                        Self::start_ws_server(self.event_proxy.clone(), &self.tokio_handle);
                         if let Some(renderer) = self.renderer.as_mut() {
-                            renderer.side_panel.ble_active = true;
+                            renderer.side_panel.ws_active = true;
                         }
-                        tracing::info!("BLE peripheral starting...");
+                        tracing::info!("WebSocket server starting...");
                     }
                     if let Some(window) = self.window.as_ref() {
                         window.request_redraw();

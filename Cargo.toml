@@ -53,6 +53,21 @@ uuid = { version = "1", features = ["v4"] }
 # Menu bar
 muda = "0.15"
 
+# WebSocket server
+tokio-tungstenite = "0.26"
+
+# mDNS service discovery (Bonjour)
+mdns-sd = "0.12"
+
+# Base64 encoding for PTY output
+base64 = "0.22"
+
+# Futures utilities (WebSocket stream handling)
+futures-util = "0.3"
+
+# Hostname detection (Bonjour instance name)
+hostname = "0.4"
+
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3"

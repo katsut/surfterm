@@ -125,9 +125,9 @@ pub struct SidePanel {
     pub selected_index: usize,
     /// When true, the "+ New Session" button row is selected (index 0 in the navigation).
     pub new_session_highlighted: bool,
-    /// BLE peripheral status shown at bottom of side panel.
-    pub ble_active: bool,
-    pub ble_clients: usize,
+    /// WebSocket server status shown at bottom of side panel.
+    pub ws_active: bool,
+    pub ws_clients: usize,
 }
 
 impl Default for SidePanel {
@@ -144,8 +144,8 @@ impl SidePanel {
             sessions: Vec::new(),
             selected_index: 0,
             new_session_highlighted: true,
-            ble_active: false,
-            ble_clients: 0,
+            ws_active: false,
+            ws_clients: 0,
         }
     }
 
@@ -318,19 +318,19 @@ impl SidePanel {
             result.push(row);
         }
 
-        // Pad remaining rows (leave last row for BLE status)
+        // Pad remaining rows (leave last row for WS status)
         while result.len() < rows.saturating_sub(1) {
             result.push(make_row_colored("", cols, colors.side_separator, colors.background));
         }
 
-        // Last row: BLE status indicator
+        // Last row: WebSocket status indicator
         if result.len() < rows {
-            let (text, fg) = if self.ble_active && self.ble_clients > 0 {
-                (format!("BLE: {}dev", self.ble_clients), colors.state_waiting)
-            } else if self.ble_active {
-                ("BLE: ON".to_string(), colors.main_color)
+            let (text, fg) = if self.ws_active && self.ws_clients > 0 {
+                (format!("WS: {}dev", self.ws_clients), colors.state_waiting)
+            } else if self.ws_active {
+                ("WS: ON".to_string(), colors.main_color)
             } else {
-                ("BLE: OFF".to_string(), colors.state_idle)
+                ("WS: OFF".to_string(), colors.state_idle)
             };
             let mut row = Vec::with_capacity(cols);
             for ch in text.chars().take(cols) {

@@ -1,5 +1,6 @@
 pub mod ble;
 pub mod config;
+pub mod ws;
 pub mod detector;
 pub mod input;
 pub mod layer;

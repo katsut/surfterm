@@ -276,7 +276,7 @@ mod tests {
     async fn pty_handle_spawn_and_exit() {
         std::env::set_var("SHELL", "/bin/sh");
 
-        let mut handle = PtyHandle::spawn(24, 80).expect("spawn pty handle");
+        let mut handle = PtyHandle::spawn(24, 80, "test-session", "/tmp/surfterm-test.sock").expect("spawn pty handle");
 
         // Send 'exit' to make the shell terminate.
         handle
@@ -295,7 +295,7 @@ mod tests {
     #[tokio::test]
     async fn pty_handle_resize() {
         std::env::set_var("SHELL", "/bin/sh");
-        let mut handle = PtyHandle::spawn(24, 80).expect("spawn pty handle");
+        let mut handle = PtyHandle::spawn(24, 80, "test-session", "/tmp/surfterm-test.sock").expect("spawn pty handle");
 
         // Resize should succeed.
         handle.resize(48, 120).await.expect("resize pty");

@@ -1126,7 +1126,7 @@ async fn e2e_pty_spawn_and_pipeline() {
     // Force a known shell.
     std::env::set_var("SHELL", "/bin/sh");
 
-    let mut pty = PtyHandle::spawn(24, 80).expect("spawn pty");
+    let mut pty = PtyHandle::spawn(24, 80, "e2e-test", "/tmp/surfterm-e2e.sock").expect("spawn pty");
 
     // Send a quick command and exit.
     pty.write_input(b"echo E2E_TEST_MARKER\n")
