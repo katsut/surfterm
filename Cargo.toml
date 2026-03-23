@@ -56,8 +56,6 @@ muda = "0.15"
 # WebSocket server
 tokio-tungstenite = "0.26"
 
-# mDNS service discovery (Bonjour)
-mdns-sd = "0.12"
 
 # Base64 encoding for PTY output
 base64 = "0.22"

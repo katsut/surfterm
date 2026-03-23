@@ -1,28 +1,34 @@
+use std::process::{Child, Command};
+
 use anyhow::Result;
-use mdns_sd::{ServiceDaemon, ServiceInfo};
 
-const SERVICE_TYPE: &str = "_surfterm._tcp.local.";
-
-/// Handle to the mDNS service advertisement.
+/// Handle to the mDNS service advertisement via native `dns-sd` command.
 ///
-/// Dropping this will unregister the service.
+/// Dropping this will kill the dns-sd process and stop advertising.
 pub struct BonjourHandle {
-    daemon: ServiceDaemon,
-    fullname: String,
+    child: Child,
 }
 
 impl BonjourHandle {
-    /// Stop advertising and shut down the mDNS daemon.
-    pub fn shutdown(self) {
-        let _ = self.daemon.unregister(&self.fullname);
-        let _ = self.daemon.shutdown();
+    /// Stop advertising and shut down.
+    pub fn shutdown(mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+impl Drop for BonjourHandle {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 
 /// Advertise the Surfterm WebSocket server via Bonjour/mDNS.
+///
+/// Uses the native macOS `dns-sd` command for reliable mDNS registration
+/// through the system's mDNSResponder.
 pub fn advertise(port: u16) -> Result<BonjourHandle> {
-    let daemon = ServiceDaemon::new()?;
-
     let hostname = hostname::get()
         .ok()
         .and_then(|h| h.into_string().ok())
@@ -30,19 +36,21 @@ pub fn advertise(port: u16) -> Result<BonjourHandle> {
 
     let instance_name = format!("Surfterm ({})", hostname);
 
-    let service = ServiceInfo::new(
-        SERVICE_TYPE,
-        &instance_name,
-        &format!("{}.", hostname),
-        "",
-        port,
-        None,
-    )?;
+    let child = Command::new("dns-sd")
+        .args([
+            "-R",
+            &instance_name,
+            "_surfterm._tcp",
+            "local.",
+            &port.to_string(),
+        ])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| anyhow::anyhow!("Failed to spawn dns-sd: {e}"))?;
 
-    let fullname = service.get_fullname().to_string();
-    daemon.register(service)?;
+    tracing::info!(port, %instance_name, "Bonjour: advertising via dns-sd");
 
-    tracing::info!(port, %instance_name, "Bonjour: advertising WebSocket service");
-
-    Ok(BonjourHandle { daemon, fullname })
+    Ok(BonjourHandle { child })
 }
