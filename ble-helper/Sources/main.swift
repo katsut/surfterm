@@ -5,11 +5,13 @@ import Foundation
 let serviceUUID = CBUUID(string: "5572F001-7846-4D32-A1A4-5F7A4E3B6C10")
 let sessionListCharUUID = CBUUID(string: "5572F002-7846-4D32-A1A4-5F7A4E3B6C10")
 let commandCharUUID = CBUUID(string: "5572F003-7846-4D32-A1A4-5F7A4E3B6C10")
+let terminalOutputCharUUID = CBUUID(string: "5572F004-7846-4D32-A1A4-5F7A4E3B6C10")
 
 class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
     var peripheralManager: CBPeripheralManager!
     var sessionListChar: CBMutableCharacteristic!
     var commandChar: CBMutableCharacteristic!
+    var terminalOutputChar: CBMutableCharacteristic!
     var subscribedCentrals: [CBCentral] = []
     var currentSessionData: Data = "[]".data(using: .utf8)!
 
@@ -42,8 +44,15 @@ class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
             permissions: [.writeable]
         )
 
+        terminalOutputChar = CBMutableCharacteristic(
+            type: terminalOutputCharUUID,
+            properties: [.notify],
+            value: nil,
+            permissions: [.readable]
+        )
+
         let service = CBMutableService(type: serviceUUID, primary: true)
-        service.characteristics = [sessionListChar, commandChar]
+        service.characteristics = [sessionListChar, commandChar, terminalOutputChar]
         peripheralManager.add(service)
     }
 
@@ -129,6 +138,15 @@ class BLEPeripheral: NSObject, CBPeripheralManagerDelegate {
         }
     }
 
+    func sendTerminalOutput(_ data: Data) {
+        if !subscribedCentrals.isEmpty {
+            // BLE notify max ~512 bytes, truncate if needed
+            let maxSize = 512
+            let payload = data.count > maxSize ? data.prefix(maxSize) : data
+            peripheralManager.updateValue(Data(payload), for: terminalOutputChar, onSubscribedCentrals: nil)
+        }
+    }
+
     func log(_ message: String) {
         FileHandle.standardError.write("[\(Date())] \(message)\n".data(using: .utf8)!)
     }
@@ -150,6 +168,12 @@ DispatchQueue.global(qos: .utility).async {
             if let payload = try? JSONSerialization.data(withJSONObject: sessionsData) {
                 DispatchQueue.main.async {
                     peripheral.updateSessions(payload)
+                }
+            }
+        } else if type == "terminal_output", let text = json["data"] as? String {
+            if let payload = text.data(using: .utf8) {
+                DispatchQueue.main.async {
+                    peripheral.sendTerminalOutput(payload)
                 }
             }
         }

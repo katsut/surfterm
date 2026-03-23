@@ -52,6 +52,8 @@ pub enum AppEvent {
     /// BLE peripheral is ready (not Debug-printable).
     #[allow(dead_code)]
     BleReady(Arc<Mutex<BlePeripheralHandle>>),
+    /// BLE client connected or disconnected.
+    BleClientChanged(bool),
 }
 
 /// Per-session pipeline holding the terminal emulator, PTY handles, and processing components.
@@ -99,6 +101,8 @@ struct App {
     socket_path: String,
     /// BLE peripheral handle for updating session data.
     ble_handle: Option<Arc<Mutex<BlePeripheralHandle>>>,
+    /// Number of BLE clients currently connected.
+    ble_client_count: usize,
 }
 
 impl App {
@@ -130,6 +134,7 @@ impl App {
             cursor_blink_at: std::time::Instant::now(),
             socket_path,
             ble_handle,
+            ble_client_count: 0,
         }
     }
 
@@ -770,9 +775,11 @@ impl App {
                             }
                             BleEvent::ClientSubscribed => {
                                 tracing::info!("BLE client subscribed");
+                                let _ = proxy_cmd.send_event(AppEvent::BleClientChanged(true));
                             }
                             BleEvent::ClientUnsubscribed => {
                                 tracing::info!("BLE client unsubscribed");
+                                let _ = proxy_cmd.send_event(AppEvent::BleClientChanged(false));
                             }
                         }
                     }
@@ -1225,6 +1232,20 @@ impl ApplicationHandler<AppEvent> for App {
                         }
                     }
 
+                    // Stream terminal output to BLE for active session
+                    if self.active_session == Some(session_id) {
+                        if let Some(ble_handle) = &self.ble_handle {
+                            let text = String::from_utf8_lossy(&data).to_string();
+                            if !text.is_empty() {
+                                let handle = Arc::clone(ble_handle);
+                                self.tokio_handle.spawn(async move {
+                                    let mut h = handle.lock().await;
+                                    let _ = h.send_terminal_output(&text).await;
+                                });
+                            }
+                        }
+                    }
+
                     // Update side panel and card stack
                     self.update_side_panel();
                 }
@@ -1263,10 +1284,26 @@ impl ApplicationHandler<AppEvent> for App {
                     }
                 }
             }
+            AppEvent::BleClientChanged(subscribed) => {
+                if subscribed {
+                    self.ble_client_count = self.ble_client_count.saturating_add(1);
+                } else {
+                    self.ble_client_count = self.ble_client_count.saturating_sub(1);
+                }
+                if let Some(renderer) = self.renderer.as_mut() {
+                    renderer.side_panel.ble_clients = self.ble_client_count;
+                }
+                if let Some(window) = self.window.as_ref() {
+                    window.request_redraw();
+                }
+            }
             AppEvent::BleReady(handle) => {
                 tracing::info!("BLE peripheral ready");
                 self.ble_handle = Some(handle);
                 self.notify_ble_sessions();
+                if let Some(window) = self.window.as_ref() {
+                    window.request_redraw();
+                }
             }
             AppEvent::BleCommand(cmd) => {
                 tracing::info!(?cmd, "BLE command received");

@@ -127,6 +127,7 @@ pub struct SidePanel {
     pub new_session_highlighted: bool,
     /// BLE peripheral status shown at bottom of side panel.
     pub ble_active: bool,
+    pub ble_clients: usize,
 }
 
 impl Default for SidePanel {
@@ -144,6 +145,7 @@ impl SidePanel {
             selected_index: 0,
             new_session_highlighted: true,
             ble_active: false,
+            ble_clients: 0,
         }
     }
 
@@ -323,10 +325,12 @@ impl SidePanel {
 
         // Last row: BLE status indicator
         if result.len() < rows {
-            let (text, fg) = if self.ble_active {
-                ("BLE: ON", colors.state_waiting) // green
+            let (text, fg) = if self.ble_active && self.ble_clients > 0 {
+                (format!("BLE: {}dev", self.ble_clients), colors.state_waiting)
+            } else if self.ble_active {
+                ("BLE: ON".to_string(), colors.main_color)
             } else {
-                ("BLE: OFF", colors.state_idle) // dim
+                ("BLE: OFF".to_string(), colors.state_idle)
             };
             let mut row = Vec::with_capacity(cols);
             for ch in text.chars().take(cols) {

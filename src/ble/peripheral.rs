@@ -37,6 +37,17 @@ impl BlePeripheralHandle {
             .map_err(|e| anyhow::anyhow!("Failed to send to BLE helper: {e}"))?;
         Ok(())
     }
+
+    /// Stream terminal output text to BLE subscribers.
+    pub async fn send_terminal_output(&mut self, text: &str) -> Result<()> {
+        let escaped = text.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
+        let msg = format!("{{\"type\":\"terminal_output\",\"data\":\"{}\"}}", escaped);
+        self.stdin_tx
+            .send(msg)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to send terminal output to BLE: {e}"))?;
+        Ok(())
+    }
 }
 
 /// Start the BLE peripheral by spawning the Swift helper process.
