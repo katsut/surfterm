@@ -108,8 +108,8 @@ impl App {
         // Start Unix socket listener for external notifications
         Self::start_notification_listener(&socket_path, event_proxy.clone(), &tokio_handle);
 
-        // Start BLE peripheral server
-        let ble_handle = Self::start_ble_peripheral(event_proxy.clone(), &tokio_handle);
+        // BLE peripheral starts OFF — user can enable via View > Toggle BLE (Cmd+Shift+B)
+        let ble_handle = None;
 
         Self {
             window: None,
@@ -1347,6 +1347,17 @@ impl ApplicationHandler<AppEvent> for App {
                     }
                     if let Some(window) = self.window.as_ref() {
                         window.request_redraw();
+                    }
+                }
+                MenuAction::ToggleBle => {
+                    if self.ble_handle.is_some() {
+                        // Turn OFF: drop the handle
+                        self.ble_handle = None;
+                        tracing::info!("BLE peripheral stopped");
+                    } else {
+                        // Turn ON: start peripheral
+                        Self::start_ble_peripheral(self.event_proxy.clone(), &self.tokio_handle);
+                        tracing::info!("BLE peripheral starting...");
                     }
                 }
             }

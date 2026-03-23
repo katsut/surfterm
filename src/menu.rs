@@ -16,6 +16,7 @@ pub enum MenuAction {
     NewSession,
     CloseSession,
     ToggleRawView,
+    ToggleBle,
 }
 
 /// Holds the menu bar and IDs needed to map events to actions.
@@ -27,6 +28,7 @@ pub struct AppMenu {
     new_session_id: MenuId,
     close_session_id: MenuId,
     toggle_raw_id: MenuId,
+    toggle_ble_id: MenuId,
 }
 
 impl Default for AppMenu {
@@ -103,9 +105,19 @@ impl AppMenu {
             true,
             Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyR)),
         );
+        let toggle_ble = MenuItem::new(
+            "Toggle BLE Peripheral",
+            true,
+            Some(Accelerator::new(
+                Some(Modifiers::SUPER | Modifiers::SHIFT),
+                Code::KeyB,
+            )),
+        );
         view_menu
             .append_items(&[
                 &toggle_raw,
+                &PredefinedMenuItem::separator(),
+                &toggle_ble,
                 &PredefinedMenuItem::separator(),
                 &PredefinedMenuItem::fullscreen(None),
             ])
@@ -135,6 +147,7 @@ impl AppMenu {
         let new_session_id = new_session.id().clone();
         let close_session_id = close_session.id().clone();
         let toggle_raw_id = toggle_raw.id().clone();
+        let toggle_ble_id = toggle_ble.id().clone();
 
         tracing::info!("macOS menu bar initialized");
 
@@ -143,6 +156,7 @@ impl AppMenu {
             new_session_id,
             close_session_id,
             toggle_raw_id,
+            toggle_ble_id,
         }
     }
 
@@ -157,6 +171,8 @@ impl AppMenu {
             Some(MenuAction::CloseSession)
         } else if *id == self.toggle_raw_id {
             Some(MenuAction::ToggleRawView)
+        } else if *id == self.toggle_ble_id {
+            Some(MenuAction::ToggleBle)
         } else {
             None
         }
