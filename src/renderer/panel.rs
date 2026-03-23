@@ -125,6 +125,8 @@ pub struct SidePanel {
     pub selected_index: usize,
     /// When true, the "+ New Session" button row is selected (index 0 in the navigation).
     pub new_session_highlighted: bool,
+    /// BLE peripheral status shown at bottom of side panel.
+    pub ble_active: bool,
 }
 
 impl Default for SidePanel {
@@ -141,6 +143,7 @@ impl SidePanel {
             sessions: Vec::new(),
             selected_index: 0,
             new_session_highlighted: true,
+            ble_active: false,
         }
     }
 
@@ -313,9 +316,40 @@ impl SidePanel {
             result.push(row);
         }
 
-        // Pad remaining rows
-        while result.len() < rows {
+        // Pad remaining rows (leave last row for BLE status)
+        while result.len() < rows.saturating_sub(1) {
             result.push(make_row_colored("", cols, colors.side_separator, colors.background));
+        }
+
+        // Last row: BLE status indicator
+        if result.len() < rows {
+            let (text, fg) = if self.ble_active {
+                ("BLE: ON", colors.state_waiting) // green
+            } else {
+                ("BLE: OFF", colors.state_idle) // dim
+            };
+            let mut row = Vec::with_capacity(cols);
+            for ch in text.chars().take(cols) {
+                row.push(TerminalCell {
+                    c: ch,
+                    fg,
+                    bg: colors.background,
+                    bold: false,
+                    italic: false,
+                    underline: false, wide: false, wide_spacer: false,
+                });
+            }
+            while row.len() < cols {
+                row.push(TerminalCell {
+                    c: ' ',
+                    fg,
+                    bg: colors.background,
+                    bold: false,
+                    italic: false,
+                    underline: false, wide: false, wide_spacer: false,
+                });
+            }
+            result.push(row);
         }
 
         result

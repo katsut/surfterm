@@ -1351,13 +1351,20 @@ impl ApplicationHandler<AppEvent> for App {
                 }
                 MenuAction::ToggleBle => {
                     if self.ble_handle.is_some() {
-                        // Turn OFF: drop the handle
                         self.ble_handle = None;
+                        if let Some(renderer) = self.renderer.as_mut() {
+                            renderer.side_panel.ble_active = false;
+                        }
                         tracing::info!("BLE peripheral stopped");
                     } else {
-                        // Turn ON: start peripheral
                         Self::start_ble_peripheral(self.event_proxy.clone(), &self.tokio_handle);
+                        if let Some(renderer) = self.renderer.as_mut() {
+                            renderer.side_panel.ble_active = true;
+                        }
                         tracing::info!("BLE peripheral starting...");
+                    }
+                    if let Some(window) = self.window.as_ref() {
+                        window.request_redraw();
                     }
                 }
             }

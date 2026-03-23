@@ -46,13 +46,22 @@ pub async fn start_peripheral() -> Result<(BlePeripheralHandle, mpsc::Receiver<B
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::process::Command;
 
-    // Look for the helper binary next to the surfterm binary, or in PATH
-    let helper_name = "surfterm-ble-helper";
-    let helper_path = std::env::current_exe()
+    // Look for the .app bundle next to the surfterm binary, then fallback to bare binary
+    let exe_dir = std::env::current_exe()
         .ok()
-        .and_then(|p| p.parent().map(|d| d.join(helper_name)))
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+
+    let helper_path = exe_dir
+        .as_ref()
+        .map(|d| d.join("SurftermBLE.app/Contents/MacOS/surfterm-ble-helper"))
         .filter(|p| p.exists())
-        .unwrap_or_else(|| std::path::PathBuf::from(helper_name));
+        .or_else(|| {
+            exe_dir
+                .as_ref()
+                .map(|d| d.join("surfterm-ble-helper"))
+                .filter(|p| p.exists())
+        })
+        .unwrap_or_else(|| std::path::PathBuf::from("surfterm-ble-helper"));
 
     let mut child = Command::new(&helper_path)
         .stdin(std::process::Stdio::piped())
