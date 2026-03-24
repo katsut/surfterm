@@ -65,6 +65,32 @@ pub struct TerminalContent {
     pub cursor_col: usize,
 }
 
+impl TerminalContent {
+    /// Extract plain text from the visible screen, one line per row.
+    /// Trailing spaces are trimmed, empty trailing rows are omitted.
+    pub fn to_plain_text(&self) -> String {
+        let mut lines: Vec<String> = self
+            .rows
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .filter(|c| !c.wide_spacer)
+                    .map(|c| c.c)
+                    .collect::<String>()
+                    .trim_end()
+                    .to_string()
+            })
+            .collect();
+
+        // Remove empty trailing lines
+        while lines.last().is_some_and(|l| l.is_empty()) {
+            lines.pop();
+        }
+
+        lines.join("\n")
+    }
+}
+
 /// Default 256-color table used to resolve indexed colors.
 ///
 /// Colors 0-7: standard ANSI, 8-15: bright ANSI, 16-231: 6x6x6 cube, 232-255: grayscale ramp.
