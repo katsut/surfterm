@@ -110,7 +110,7 @@ impl AppMenu {
             true,
             Some(Accelerator::new(
                 Some(Modifiers::SUPER | Modifiers::SHIFT),
-                Code::KeyW,
+                Code::KeyM,
             )),
         );
         view_menu
