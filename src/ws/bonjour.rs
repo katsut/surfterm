@@ -27,8 +27,13 @@ impl Drop for BonjourHandle {
 /// Advertise the Surfterm WebSocket server via Bonjour/mDNS.
 ///
 /// Uses the native macOS `dns-sd` command for reliable mDNS registration
-/// through the system's mDNSResponder.
+/// through the system's mDNSResponder. Kills any stale dns-sd processes
+/// from previous Surfterm runs before starting.
 pub fn advertise(port: u16) -> Result<BonjourHandle> {
+    // Kill any leftover dns-sd processes from previous runs
+    let _ = Command::new("pkill")
+        .args(["-f", "dns-sd.*_surfterm._tcp"])
+        .output();
     let hostname = hostname::get()
         .ok()
         .and_then(|h| h.into_string().ok())
