@@ -1335,6 +1335,21 @@ impl ApplicationHandler<AppEvent> for App {
                             let target = SessionId::from(target_id);
                             if self.sessions.contains_key(&target) {
                                 self.switch_to_session(target);
+                                // Send terminal snapshot to mobile client
+                                if let (Some(pipeline), Some(ws_handle)) =
+                                    (self.sessions.get(&target), &self.ws_handle)
+                                {
+                                    let plain = pipeline.terminal.content().to_plain_text();
+                                    if !plain.is_empty() {
+                                        use base64::Engine;
+                                        let b64 = base64::engine::general_purpose::STANDARD
+                                            .encode(plain.as_bytes());
+                                        ws_handle.broadcast(&WsOutMessage::PtyOutput {
+                                            session_id: target.to_string(),
+                                            data: b64,
+                                        });
+                                    }
+                                }
                                 if let Some(window) = self.window.as_ref() {
                                     window.request_redraw();
                                 }
