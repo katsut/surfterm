@@ -76,7 +76,10 @@ impl PtyHandle {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
 
         let mut cmd = CommandBuilder::new(&shell);
-        cmd.cwd(std::env::current_dir().unwrap_or_else(|_| "/".into()));
+        let home = std::env::var("HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| "/".into());
+        cmd.cwd(home);
         cmd.env("TERM_PROGRAM", "surfterm");
         cmd.env("TERM", "xterm-256color");
         cmd.env("SURFTERM_SESSION_ID", session_id);
