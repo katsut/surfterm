@@ -217,7 +217,7 @@ impl SidePanel {
 
         // Row 0: "+ New Session" button
         {
-            let text = "[+ New Session]";
+            let text = "[+ New Session] ⌘N";
             let bg = if self.selected_index == 0 {
                 colors.side_selected_bg
             } else {
@@ -326,11 +326,11 @@ impl SidePanel {
         // Last row: WebSocket status indicator
         if result.len() < rows {
             let (text, fg) = if self.ws_active && self.ws_clients > 0 {
-                (format!("WS: {}dev", self.ws_clients), colors.state_waiting)
+                (format!("WS: {}dev ⇧⌘M", self.ws_clients), colors.state_waiting)
             } else if self.ws_active {
-                ("WS: ON".to_string(), colors.main_color)
+                ("WS: ON ⇧⌘M".to_string(), colors.main_color)
             } else {
-                ("WS: OFF".to_string(), colors.state_idle)
+                ("WS: OFF ⇧⌘M".to_string(), colors.state_idle)
             };
             let mut row = Vec::with_capacity(cols);
             for ch in text.chars().take(cols) {
