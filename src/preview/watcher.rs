@@ -253,7 +253,16 @@ mod tests {
             .expect("timed out waiting for file change event")
             .expect("channel closed unexpectedly");
 
-        assert_eq!(event.path, file_path.canonicalize().unwrap());
+        // FSEvents works at directory granularity and coalesces, so the first
+        // event may name the watched directory rather than the file that
+        // changed. Both mean the modification was observed.
+        let file = file_path.canonicalize().unwrap();
+        let dir = tmp.path().canonicalize().unwrap();
+        assert!(
+            event.path == file || event.path == dir,
+            "expected an event for {file:?} or {dir:?}, got {:?}",
+            event.path
+        );
         // On macOS the modify may come through as Created or Modified depending
         // on the backend, so we accept either.
         assert!(
