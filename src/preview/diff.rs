@@ -210,7 +210,9 @@ pub fn to_terminal_cells(diff: &DiffResult, cols: u16, rows: u16) -> Vec<Vec<Ter
                 bg: DEFAULT_BG,
                 bold: false,
                 italic: false,
-                underline: false, wide: false, wide_spacer: false,
+                underline: false,
+                wide: false,
+                wide_spacer: false,
             };
             cols
         ]);
@@ -246,7 +248,9 @@ fn make_row(
             bg,
             bold: false,
             italic: false,
-            underline: false, wide: false, wide_spacer: false,
+            underline: false,
+            wide: false,
+            wide_spacer: false,
         });
     }
 
@@ -261,7 +265,9 @@ fn make_row(
             bg,
             bold: false,
             italic: false,
-            underline: false, wide: false, wide_spacer: false,
+            underline: false,
+            wide: false,
+            wide_spacer: false,
         });
     }
 
@@ -273,7 +279,9 @@ fn make_row(
             bg,
             bold: false,
             italic: false,
-            underline: false, wide: false, wide_spacer: false,
+            underline: false,
+            wide: false,
+            wide_spacer: false,
         });
     }
 
@@ -306,7 +314,9 @@ fn make_diff_row(
             bg,
             bold: false,
             italic: false,
-            underline: false, wide: false, wide_spacer: false,
+            underline: false,
+            wide: false,
+            wide_spacer: false,
         });
     }
 
@@ -318,7 +328,9 @@ fn make_diff_row(
             bg,
             bold: true,
             italic: false,
-            underline: false, wide: false, wide_spacer: false,
+            underline: false,
+            wide: false,
+            wide_spacer: false,
         });
     }
 
@@ -333,7 +345,9 @@ fn make_diff_row(
             bg,
             bold: false,
             italic: false,
-            underline: false, wide: false, wide_spacer: false,
+            underline: false,
+            wide: false,
+            wide_spacer: false,
         });
     }
 
@@ -345,7 +359,9 @@ fn make_diff_row(
             bg,
             bold: false,
             italic: false,
-            underline: false, wide: false, wide_spacer: false,
+            underline: false,
+            wide: false,
+            wide_spacer: false,
         });
     }
 

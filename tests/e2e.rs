@@ -17,9 +17,7 @@ use surfterm::llm::classifier::LlmClassifier;
 use surfterm::llm::expander::PromptExpander;
 use surfterm::llm::reviewer::CodeReviewer;
 use surfterm::llm::summarizer::SessionSummarizer;
-use surfterm::llm::{
-    LlmRuntime, LlmScheduler, LlmTask, LlmTaskPriority, MockLlmBackend,
-};
+use surfterm::llm::{LlmRuntime, LlmScheduler, LlmTask, LlmTaskPriority, MockLlmBackend};
 use surfterm::preview::diff::{compute_diff, DiffLine};
 use surfterm::preview::syntax::SyntaxHighlighter;
 use surfterm::preview::watcher::ToolOutputMonitor;
@@ -110,10 +108,7 @@ fn named_key(k: NamedKey) -> Key {
 
 /// Create a temporary directory for test config files.
 fn tempdir(suffix: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "surfterm_e2e_{suffix}_{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("surfterm_e2e_{suffix}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -181,13 +176,19 @@ fn e2e_full_session_lifecycle() {
     }
 
     // Verify we saw all three categories of output.
-    assert!(message_count > 0, "should have classified some Message chunks");
+    assert!(
+        message_count > 0,
+        "should have classified some Message chunks"
+    );
     assert!(state_count > 0, "should have classified some State chunks");
     assert!(raw_count > 0, "should have classified some Raw chunks");
 
     // Verify the detector saw meaningful state transitions.
     assert!(saw_running, "detector should have entered Running state");
-    assert!(saw_waiting, "detector should have entered WaitingForInput state");
+    assert!(
+        saw_waiting,
+        "detector should have entered WaitingForInput state"
+    );
     assert!(saw_error, "detector should have entered Error state");
 
     // Verify the terminal has content from the session.
@@ -221,14 +222,17 @@ fn e2e_multi_session_layer_transitions() {
     }
 
     // Create detectors for each session.
-    let mut detectors: Vec<(StateDetector, tokio::sync::watch::Receiver<SessionState>)> =
-        ids.iter()
-            .map(|_| StateDetector::new(default_claude_code_state_patterns()))
-            .collect();
+    let mut detectors: Vec<(StateDetector, tokio::sync::watch::Receiver<SessionState>)> = ids
+        .iter()
+        .map(|_| StateDetector::new(default_claude_code_state_patterns()))
+        .collect();
 
     // Simulate session 0 going to WaitingForInput.
     detectors[0].0.process_chunk(b"Would you like to proceed?");
-    assert_eq!(detectors[0].0.current_state(), SessionState::WaitingForInput);
+    assert_eq!(
+        detectors[0].0.current_state(),
+        SessionState::WaitingForInput
+    );
 
     let event = apply_state_change(
         &mut layer_ctrl,
@@ -240,7 +244,9 @@ fn e2e_multi_session_layer_transitions() {
     assert_eq!(layer_ctrl.get_layer(&ids[0]), Some(Layer::Foreground));
 
     // Simulate session 1 encountering an error.
-    detectors[1].0.process_chunk(b"Error: TypeScript compilation failed");
+    detectors[1]
+        .0
+        .process_chunk(b"Error: TypeScript compilation failed");
     assert_eq!(detectors[1].0.current_state(), SessionState::Error);
 
     let event = apply_state_change(
@@ -532,7 +538,10 @@ fn e2e_panel_rendering_pipeline() {
     }
 
     // Verify message panel has content.
-    assert!(!msg_panel.messages.is_empty(), "message panel should have messages");
+    assert!(
+        !msg_panel.messages.is_empty(),
+        "message panel should have messages"
+    );
     let msg_cells = msg_panel.to_terminal_cells(60, 20);
     assert_eq!(msg_cells.len(), 20);
     assert_eq!(msg_cells[0].len(), 60);
@@ -545,8 +554,14 @@ fn e2e_panel_rendering_pipeline() {
     );
 
     // Verify state panel has extracted info.
-    assert!(state_panel.current_tool.is_some(), "state panel should have a tool");
-    assert!(state_panel.cost.is_some(), "state panel should have cost info");
+    assert!(
+        state_panel.current_tool.is_some(),
+        "state panel should have a tool"
+    );
+    assert!(
+        state_panel.cost.is_some(),
+        "state panel should have cost info"
+    );
 
     let state_cells = state_panel.to_terminal_cells(40, 15);
     assert_eq!(state_cells.len(), 15);
@@ -585,7 +600,10 @@ fn e2e_file_watcher_preview_pipeline() {
     let highlighted = highlighter.highlight_file(&file_path).unwrap();
     assert_eq!(highlighted.len(), 3, "file should have 3 lines");
     assert_eq!(highlighted[0].line_number, 1);
-    assert!(!highlighted[0].spans.is_empty(), "first line should have spans");
+    assert!(
+        !highlighted[0].spans.is_empty(),
+        "first line should have spans"
+    );
 
     // Render highlighted lines to terminal cells.
     let cells = surfterm::preview::syntax::to_terminal_cells(&highlighted, 60, 10, 0);
@@ -594,7 +612,8 @@ fn e2e_file_watcher_preview_pipeline() {
     assert_eq!(cells[0][3].c, '1');
 
     // Modify the file.
-    let modified_content = "fn main() {\n    println!(\"hello, world!\");\n    eprintln!(\"debug\");\n}\n";
+    let modified_content =
+        "fn main() {\n    println!(\"hello, world!\");\n    eprintln!(\"debug\");\n}\n";
     std::fs::write(&file_path, modified_content).unwrap();
 
     // Compute diff.
@@ -1022,7 +1041,8 @@ async fn e2e_pty_spawn_and_pipeline() {
     // Force a known shell.
     std::env::set_var("SHELL", "/bin/sh");
 
-    let mut pty = PtyHandle::spawn(24, 80, "e2e-test", "/tmp/surfterm-e2e.sock").expect("spawn pty");
+    let mut pty =
+        PtyHandle::spawn(24, 80, "e2e-test", "/tmp/surfterm-e2e.sock").expect("spawn pty");
 
     // Send a quick command and exit.
     pty.write_input(b"echo E2E_TEST_MARKER\n")
@@ -1064,7 +1084,10 @@ async fn e2e_pty_spawn_and_pipeline() {
     while channels.raw_rx.try_recv().is_ok() {
         classified += 1;
     }
-    assert!(classified > 0, "PTY output should produce classified chunks");
+    assert!(
+        classified > 0,
+        "PTY output should produce classified chunks"
+    );
 }
 
 /// Tests the full SessionManager lifecycle E2E (create, operate, kill).
@@ -1090,10 +1113,7 @@ async fn e2e_session_manager_lifecycle() {
 
     // All sessions should start Idle.
     for id in [id1, id2, id3] {
-        assert_eq!(
-            mgr.get_session(&id).unwrap().state(),
-            SessionState::Idle
-        );
+        assert_eq!(mgr.get_session(&id).unwrap().state(), SessionState::Idle);
     }
 
     // Kill session 2 (active) — should switch to another.

@@ -144,8 +144,8 @@ pub struct CardColors {
 impl Default for CardColors {
     fn default() -> Self {
         Self {
-            border: ThemeColor::new(0x31, 0x32, 0x44),      // #313244
-            title: ThemeColor::new(0xcd, 0xd6, 0xf4),       // #cdd6f4
+            border: ThemeColor::new(0x31, 0x32, 0x44),       // #313244
+            title: ThemeColor::new(0xcd, 0xd6, 0xf4),        // #cdd6f4
             active_title: ThemeColor::new(0x89, 0xb4, 0xfa), // #89b4fa
         }
     }
@@ -165,9 +165,9 @@ impl Default for StateColors {
     fn default() -> Self {
         Self {
             idle: ThemeColor::new(0x6c, 0x70, 0x86),    // #6c7086
-            running: ThemeColor::new(0xf9, 0xe2, 0xaf),  // #f9e2af
-            waiting: ThemeColor::new(0xa6, 0xe3, 0xa1),  // #a6e3a1
-            error: ThemeColor::new(0xf3, 0x8b, 0xa8),    // #f38ba8
+            running: ThemeColor::new(0xf9, 0xe2, 0xaf), // #f9e2af
+            waiting: ThemeColor::new(0xa6, 0xe3, 0xa1), // #a6e3a1
+            error: ThemeColor::new(0xf3, 0x8b, 0xa8),   // #f38ba8
         }
     }
 }
@@ -250,22 +250,22 @@ impl Default for AnsiColors {
     /// Catppuccin Mocha ANSI palette — softer than classic xterm.
     fn default() -> Self {
         Self {
-            black: ThemeColor::new(0x45, 0x47, 0x5a),         // #45475a
-            red: ThemeColor::new(0xf3, 0x8b, 0xa8),           // #f38ba8
-            green: ThemeColor::new(0xa6, 0xe3, 0xa1),         // #a6e3a1
-            yellow: ThemeColor::new(0xf9, 0xe2, 0xaf),        // #f9e2af
-            blue: ThemeColor::new(0x89, 0xb4, 0xfa),          // #89b4fa
-            magenta: ThemeColor::new(0xf5, 0xc2, 0xe7),       // #f5c2e7
-            cyan: ThemeColor::new(0x94, 0xe2, 0xd5),          // #94e2d5
-            white: ThemeColor::new(0xba, 0xc2, 0xde),         // #bac2de
-            bright_black: ThemeColor::new(0x58, 0x5b, 0x70),  // #585b70
-            bright_red: ThemeColor::new(0xf3, 0x8b, 0xa8),    // #f38ba8
-            bright_green: ThemeColor::new(0xa6, 0xe3, 0xa1),  // #a6e3a1
-            bright_yellow: ThemeColor::new(0xf9, 0xe2, 0xaf), // #f9e2af
-            bright_blue: ThemeColor::new(0x89, 0xb4, 0xfa),   // #89b4fa
-            bright_magenta: ThemeColor::new(0xf5, 0xc2, 0xe7),// #f5c2e7
-            bright_cyan: ThemeColor::new(0x94, 0xe2, 0xd5),   // #94e2d5
-            bright_white: ThemeColor::new(0xa6, 0xad, 0xc8),  // #a6adc8
+            black: ThemeColor::new(0x45, 0x47, 0x5a),          // #45475a
+            red: ThemeColor::new(0xf3, 0x8b, 0xa8),            // #f38ba8
+            green: ThemeColor::new(0xa6, 0xe3, 0xa1),          // #a6e3a1
+            yellow: ThemeColor::new(0xf9, 0xe2, 0xaf),         // #f9e2af
+            blue: ThemeColor::new(0x89, 0xb4, 0xfa),           // #89b4fa
+            magenta: ThemeColor::new(0xf5, 0xc2, 0xe7),        // #f5c2e7
+            cyan: ThemeColor::new(0x94, 0xe2, 0xd5),           // #94e2d5
+            white: ThemeColor::new(0xba, 0xc2, 0xde),          // #bac2de
+            bright_black: ThemeColor::new(0x58, 0x5b, 0x70),   // #585b70
+            bright_red: ThemeColor::new(0xf3, 0x8b, 0xa8),     // #f38ba8
+            bright_green: ThemeColor::new(0xa6, 0xe3, 0xa1),   // #a6e3a1
+            bright_yellow: ThemeColor::new(0xf9, 0xe2, 0xaf),  // #f9e2af
+            bright_blue: ThemeColor::new(0x89, 0xb4, 0xfa),    // #89b4fa
+            bright_magenta: ThemeColor::new(0xf5, 0xc2, 0xe7), // #f5c2e7
+            bright_cyan: ThemeColor::new(0x94, 0xe2, 0xd5),    // #94e2d5
+            bright_white: ThemeColor::new(0xa6, 0xad, 0xc8),   // #a6adc8
         }
     }
 }
@@ -566,10 +566,10 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn test_default_theme_has_catppuccin_colors() {
+    fn test_default_theme_colors() {
         let theme = SurftermTheme::default();
-        // Catppuccin Mocha background: #1e1e2e
-        assert_eq!(theme.colors.background, ThemeColor::new(0x1e, 0x1e, 0x2e));
+        // Ghostty-derived background: #1a2e1a
+        assert_eq!(theme.colors.background, ThemeColor::new(0x1a, 0x2e, 0x1a));
         // Catppuccin Mocha foreground: #cdd6f4
         assert_eq!(theme.colors.foreground, ThemeColor::new(0xcd, 0xd6, 0xf4));
         // Catppuccin Mocha cursor: #f5e0dc
@@ -581,25 +581,46 @@ mod tests {
     #[test]
     fn test_default_sidebar_colors() {
         let theme = SurftermTheme::default();
-        assert_eq!(theme.colors.sidebar.new_session, ThemeColor::new(0xa6, 0xe3, 0xa1));
-        assert_eq!(theme.colors.sidebar.separator, ThemeColor::new(0x58, 0x5b, 0x70));
-        assert_eq!(theme.colors.sidebar.active_bg, ThemeColor::new(0x45, 0x47, 0x5a));
-        assert_eq!(theme.colors.sidebar.selected_bg, ThemeColor::new(0x58, 0x5b, 0x70));
+        assert_eq!(
+            theme.colors.sidebar.new_session,
+            ThemeColor::new(0xa6, 0xe3, 0xa1)
+        );
+        assert_eq!(
+            theme.colors.sidebar.separator,
+            ThemeColor::new(0x3a, 0x5a, 0x3a)
+        );
+        assert_eq!(
+            theme.colors.sidebar.active_bg,
+            ThemeColor::new(0x2a, 0x4a, 0x2a)
+        );
+        assert_eq!(
+            theme.colors.sidebar.selected_bg,
+            ThemeColor::new(0x3a, 0x5a, 0x3a)
+        );
     }
 
     #[test]
     fn test_default_card_colors() {
         let theme = SurftermTheme::default();
         assert_eq!(theme.colors.card.border, ThemeColor::new(0x31, 0x32, 0x44));
-        assert_eq!(theme.colors.card.active_title, ThemeColor::new(0x89, 0xb4, 0xfa));
+        assert_eq!(
+            theme.colors.card.active_title,
+            ThemeColor::new(0x89, 0xb4, 0xfa)
+        );
     }
 
     #[test]
     fn test_default_state_colors() {
         let theme = SurftermTheme::default();
         assert_eq!(theme.colors.state.idle, ThemeColor::new(0x6c, 0x70, 0x86));
-        assert_eq!(theme.colors.state.running, ThemeColor::new(0xf9, 0xe2, 0xaf));
-        assert_eq!(theme.colors.state.waiting, ThemeColor::new(0xa6, 0xe3, 0xa1));
+        assert_eq!(
+            theme.colors.state.running,
+            ThemeColor::new(0xf9, 0xe2, 0xaf)
+        );
+        assert_eq!(
+            theme.colors.state.waiting,
+            ThemeColor::new(0xa6, 0xe3, 0xa1)
+        );
         assert_eq!(theme.colors.state.error, ThemeColor::new(0xf3, 0x8b, 0xa8));
     }
 
@@ -757,7 +778,7 @@ accent = "#ff0000"
         let theme = manager.themes.get("partial").unwrap();
         assert_eq!(theme.colors.accent, ThemeColor::new(255, 0, 0));
         // Defaults for the rest
-        assert_eq!(theme.colors.background, ThemeColor::new(0x1e, 0x1e, 0x2e));
+        assert_eq!(theme.colors.background, ThemeColor::new(0x1a, 0x2e, 0x1a));
         assert_eq!(theme.colors.foreground, ThemeColor::new(0xcd, 0xd6, 0xf4));
         assert_eq!(theme.colors.cursor, ThemeColor::new(0xf5, 0xe0, 0xdc));
     }
@@ -779,8 +800,8 @@ accent = "#00ff00"
         .unwrap();
 
         let manager = ThemeManager::load_themes(&dir);
-        assert!(manager.themes.get("bad").is_none());
-        assert!(manager.themes.get("good").is_some());
+        assert!(!manager.themes.contains_key("bad"));
+        assert!(manager.themes.contains_key("good"));
     }
 
     #[test]
@@ -812,8 +833,14 @@ accent = "#abcdef"
         // Should have auto-generated accent but default background/foreground/cursor
         let expected_accent = ThemeManager::auto_accent(cwd);
         assert_eq!(theme.colors.accent, expected_accent);
-        assert_eq!(theme.colors.background, SurftermTheme::default().colors.background);
-        assert_eq!(theme.colors.foreground, SurftermTheme::default().colors.foreground);
+        assert_eq!(
+            theme.colors.background,
+            SurftermTheme::default().colors.background
+        );
+        assert_eq!(
+            theme.colors.foreground,
+            SurftermTheme::default().colors.foreground
+        );
         assert_eq!(theme.colors.cursor, SurftermTheme::default().colors.cursor);
     }
 
@@ -829,7 +856,10 @@ accent = "#abcdef"
         let config_dir = tempdir("load_theme_none");
         let cwd = tempdir("load_theme_cwd");
         let theme = ThemeManager::load_theme(&config_dir, &cwd);
-        assert_eq!(theme.colors.background, SurftermTheme::default().colors.background);
+        assert_eq!(
+            theme.colors.background,
+            SurftermTheme::default().colors.background
+        );
     }
 
     #[test]
@@ -848,7 +878,10 @@ background = "#000000"
         let theme = ThemeManager::load_theme(&config_dir, &cwd);
         assert_eq!(theme.colors.background, ThemeColor::new(0, 0, 0));
         // Unset fields remain defaults
-        assert_eq!(theme.colors.foreground, SurftermTheme::default().colors.foreground);
+        assert_eq!(
+            theme.colors.foreground,
+            SurftermTheme::default().colors.foreground
+        );
     }
 
     #[test]
@@ -881,7 +914,10 @@ background = "#333333"
         assert_eq!(theme.colors.background, ThemeColor::new(0x33, 0x33, 0x33));
         // Note: since we deserialize full structs, unset fields in local get defaults
         // (not global values). This is the serde(default) behavior.
-        assert_eq!(theme.colors.foreground, SurftermTheme::default().colors.foreground);
+        assert_eq!(
+            theme.colors.foreground,
+            SurftermTheme::default().colors.foreground
+        );
     }
 
     #[test]
@@ -936,9 +972,18 @@ error = "#f38ba8"
 "##;
         let theme: SurftermTheme = toml::from_str(toml_str).unwrap();
         assert_eq!(theme.colors.background, ThemeColor::new(0x1e, 0x1e, 0x2e));
-        assert_eq!(theme.colors.sidebar.new_session, ThemeColor::new(0xa6, 0xe3, 0xa1));
-        assert_eq!(theme.colors.card.active_title, ThemeColor::new(0x89, 0xb4, 0xfa));
-        assert_eq!(theme.colors.state.running, ThemeColor::new(0xf9, 0xe2, 0xaf));
+        assert_eq!(
+            theme.colors.sidebar.new_session,
+            ThemeColor::new(0xa6, 0xe3, 0xa1)
+        );
+        assert_eq!(
+            theme.colors.card.active_title,
+            ThemeColor::new(0x89, 0xb4, 0xfa)
+        );
+        assert_eq!(
+            theme.colors.state.running,
+            ThemeColor::new(0xf9, 0xe2, 0xaf)
+        );
     }
 
     #[test]
@@ -949,16 +994,25 @@ error = "#f38ba8"
 new_session = "#ff0000"
 "##;
         let theme: SurftermTheme = toml::from_str(toml_str).unwrap();
-        assert_eq!(theme.colors.sidebar.new_session, ThemeColor::new(0xff, 0x00, 0x00));
+        assert_eq!(
+            theme.colors.sidebar.new_session,
+            ThemeColor::new(0xff, 0x00, 0x00)
+        );
         // Defaults for everything else
-        assert_eq!(theme.colors.background, SurftermTheme::default().colors.background);
-        assert_eq!(theme.colors.sidebar.separator, SurftermTheme::default().colors.sidebar.separator);
+        assert_eq!(
+            theme.colors.background,
+            SurftermTheme::default().colors.background
+        );
+        assert_eq!(
+            theme.colors.sidebar.separator,
+            SurftermTheme::default().colors.sidebar.separator
+        );
     }
 
     /// Helper to create a unique temporary directory for each test.
     fn tempdir(suffix: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("surfterm_test_{suffix}_{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("surfterm_test_{suffix}_{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir

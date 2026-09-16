@@ -47,22 +47,14 @@ pub struct TextRenderer {
 impl TextRenderer {
     /// Create a new text renderer bound to the given wgpu device and surface format.
     #[instrument(skip_all)]
-    pub fn new(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        format: wgpu::TextureFormat,
-    ) -> Self {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
         let font_system = FontSystem::new();
         let swash_cache = SwashCache::new();
         let cache = Cache::new(device);
         let viewport = Viewport::new(device, &cache);
         let mut atlas = TextAtlas::new(device, queue, &cache, format);
-        let renderer = glyphon::TextRenderer::new(
-            &mut atlas,
-            device,
-            wgpu::MultisampleState::default(),
-            None,
-        );
+        let renderer =
+            glyphon::TextRenderer::new(&mut atlas, device, wgpu::MultisampleState::default(), None);
 
         Self {
             font_system,
@@ -143,10 +135,7 @@ impl TextRenderer {
 
                     let ch = cell.c.to_string();
                     let color = Color::rgb(cell.fg.r, cell.fg.g, cell.fg.b);
-                    let attrs = Attrs::new()
-                        .family(family)
-                        .weight(weight)
-                        .color(color);
+                    let attrs = Attrs::new().family(family).weight(weight).color(color);
 
                     buffer.set_rich_text(
                         &mut self.font_system,
@@ -442,8 +431,16 @@ impl TextRenderer {
 
         if !text_areas.is_empty() {
             let first = &text_areas[0];
-            let last_sidebar = if !sidebar_buffers.is_empty() { &text_areas[sidebar_buffers.len() - 1] } else { first };
-            let first_main = if sidebar_buffers.len() < text_areas.len() { &text_areas[sidebar_buffers.len()] } else { first };
+            let last_sidebar = if !sidebar_buffers.is_empty() {
+                &text_areas[sidebar_buffers.len() - 1]
+            } else {
+                first
+            };
+            let first_main = if sidebar_buffers.len() < text_areas.len() {
+                &text_areas[sidebar_buffers.len()]
+            } else {
+                first
+            };
             tracing::info!(
                 total_areas = text_areas.len(),
                 sidebar_areas = sidebar_buffers.len(),
@@ -475,8 +472,7 @@ impl TextRenderer {
     /// Execute the glyphon render pass (must be called after prepare).
     #[instrument(skip_all)]
     pub fn render_pass(&mut self, pass: &mut wgpu::RenderPass<'_>) -> Result<()> {
-        self.renderer
-            .render(&self.atlas, &self.viewport, pass)?;
+        self.renderer.render(&self.atlas, &self.viewport, pass)?;
         Ok(())
     }
 }

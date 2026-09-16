@@ -51,10 +51,7 @@ pub fn apply_state_change(
 ///
 /// The session is moved to background unless it is pinned.
 #[allow(dead_code)]
-pub fn apply_user_input(
-    controller: &mut LayerController,
-    id: &SessionId,
-) -> TransitionEvent {
+pub fn apply_user_input(controller: &mut LayerController, id: &SessionId) -> TransitionEvent {
     if controller.get_layer(id) == Some(Layer::Pinned) {
         return TransitionEvent::NoChange;
     }
@@ -90,12 +87,7 @@ mod tests {
         let id = SessionId::new();
         ctrl.assign(id, Layer::Background);
 
-        let event = apply_state_change(
-            &mut ctrl,
-            &id,
-            SessionState::Running,
-            SessionState::Error,
-        );
+        let event = apply_state_change(&mut ctrl, &id, SessionState::Running, SessionState::Error);
 
         assert_eq!(ctrl.get_layer(&id), Some(Layer::Foreground));
         assert_eq!(event, TransitionEvent::MovedToForeground(id));
@@ -215,12 +207,7 @@ mod tests {
         let id = SessionId::new();
         ctrl.assign(id, Layer::Background);
 
-        let event = apply_state_change(
-            &mut ctrl,
-            &id,
-            SessionState::Running,
-            SessionState::Idle,
-        );
+        let event = apply_state_change(&mut ctrl, &id, SessionState::Running, SessionState::Idle);
 
         assert_eq!(ctrl.get_layer(&id), Some(Layer::Background));
         assert_eq!(event, TransitionEvent::NoChange);
@@ -246,30 +233,15 @@ mod tests {
         assert_eq!(e2, TransitionEvent::MovedToBackground(id));
 
         // Error → MovedToForeground
-        let e3 = apply_state_change(
-            &mut ctrl,
-            &id,
-            SessionState::Running,
-            SessionState::Error,
-        );
+        let e3 = apply_state_change(&mut ctrl, &id, SessionState::Running, SessionState::Error);
         assert_eq!(e3, TransitionEvent::MovedToForeground(id));
 
         // Idle → NoChange
-        let e4 = apply_state_change(
-            &mut ctrl,
-            &id,
-            SessionState::Error,
-            SessionState::Idle,
-        );
+        let e4 = apply_state_change(&mut ctrl, &id, SessionState::Error, SessionState::Idle);
         assert_eq!(e4, TransitionEvent::NoChange);
 
         // Running from non-WaitingForInput → NoChange
-        let e5 = apply_state_change(
-            &mut ctrl,
-            &id,
-            SessionState::Idle,
-            SessionState::Running,
-        );
+        let e5 = apply_state_change(&mut ctrl, &id, SessionState::Idle, SessionState::Running);
         assert_eq!(e5, TransitionEvent::NoChange);
     }
 }

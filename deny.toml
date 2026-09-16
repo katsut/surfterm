@@ -1,11 +1,25 @@
+[graph]
+all-features = true
+
 [advisories]
-vulnerability = "deny"
-unmaintained = "warn"
+# cargo-deny 0.18+ removed the `vulnerability` / `notice` / `unlicensed` keys.
+# Vulnerabilities and notices are always denied; only these knobs remain.
+unmaintained = "workspace"
 yanked = "warn"
-notice = "warn"
+ignore = [
+    # quick-xml DoS advisories. Both reach us only transitively and only from
+    # trusted, local XML, never from attacker-controlled input:
+    #   - quick-xml 0.38 <- plist <- syntect: parses the syntax/theme plists we
+    #     ship ourselves.
+    #   - quick-xml 0.39 <- wayland-scanner <- winit: build-time code generation
+    #     from the Wayland protocol XML, and surfterm ships macOS only.
+    # Neither dependent allows a >= 0.41 quick-xml yet, so there is nothing to
+    # upgrade to. Revisit once plist and wayland-scanner bump their bounds.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+]
 
 [licenses]
-unlicensed = "deny"
 allow = [
     "MIT",
     "Apache-2.0",
@@ -16,6 +30,9 @@ allow = [
     "CC0-1.0",
     "Unicode-3.0",
     "Unicode-DFS-2016",
+    # target-lexicon, via wgpu's naga toolchain. Apache-2.0 plus the LLVM
+    # exception, which only relaxes the Apache terms for linked output.
+    "Apache-2.0 WITH LLVM-exception",
 ]
 
 [bans]

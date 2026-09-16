@@ -65,25 +65,19 @@ impl ToolRegistry {
     pub fn default_registry() -> Self {
         let mut registry = Self::new();
 
-        let command_patterns = vec![
-            Regex::new("claude").expect("invalid default command pattern"),
-        ];
+        let command_patterns = vec![Regex::new("claude").expect("invalid default command pattern")];
 
-        let stream_patterns = vec![
-            Pattern {
-                name: "tool_indicator".to_string(),
-                regex: Regex::new("⏺").expect("invalid default stream pattern"),
-                classification: Classification::State,
-            },
-        ];
+        let stream_patterns = vec![Pattern {
+            name: "tool_indicator".to_string(),
+            regex: Regex::new("⏺").expect("invalid default stream pattern"),
+            classification: Classification::State,
+        }];
 
-        let state_patterns = vec![
-            StatePattern {
-                name: "prompt".to_string(),
-                regex: Regex::new(r"^>\s").expect("invalid default state pattern"),
-                target_state: SessionState::WaitingForInput,
-            },
-        ];
+        let state_patterns = vec![StatePattern {
+            name: "prompt".to_string(),
+            regex: Regex::new(r"^>\s").expect("invalid default state pattern"),
+            target_state: SessionState::WaitingForInput,
+        }];
 
         registry.register(ToolDefinition {
             name: "claude-code".to_string(),
@@ -268,7 +262,10 @@ mod tests {
         assert_eq!(registry.tool_count(), 1);
 
         let tool = registry.get_tool("claude-code");
-        assert!(tool.is_some(), "default registry should contain claude-code");
+        assert!(
+            tool.is_some(),
+            "default registry should contain claude-code"
+        );
         let tool = tool.unwrap();
         assert_eq!(tool.name, "claude-code");
         assert!(!tool.command_patterns.is_empty());
@@ -362,10 +359,16 @@ state = "WaitingForInput"
         assert!(tool.command_patterns[0].is_match("claude"));
         assert_eq!(tool.stream_patterns.len(), 1);
         assert_eq!(tool.stream_patterns[0].name, "tool_indicator");
-        assert_eq!(tool.stream_patterns[0].classification, Classification::State);
+        assert_eq!(
+            tool.stream_patterns[0].classification,
+            Classification::State
+        );
         assert_eq!(tool.state_patterns.len(), 1);
         assert_eq!(tool.state_patterns[0].name, "prompt");
-        assert_eq!(tool.state_patterns[0].target_state, SessionState::WaitingForInput);
+        assert_eq!(
+            tool.state_patterns[0].target_state,
+            SessionState::WaitingForInput
+        );
     }
 
     #[test]
@@ -465,8 +468,14 @@ classification = "Raw"
 
         let tool = parse_tool_definition(toml_content).unwrap();
         assert_eq!(tool.stream_patterns.len(), 3);
-        assert_eq!(tool.stream_patterns[0].classification, Classification::Message);
-        assert_eq!(tool.stream_patterns[1].classification, Classification::State);
+        assert_eq!(
+            tool.stream_patterns[0].classification,
+            Classification::Message
+        );
+        assert_eq!(
+            tool.stream_patterns[1].classification,
+            Classification::State
+        );
         assert_eq!(tool.stream_patterns[2].classification, Classification::Raw);
     }
 
@@ -501,7 +510,10 @@ state = "Error"
         assert_eq!(tool.state_patterns.len(), 4);
         assert_eq!(tool.state_patterns[0].target_state, SessionState::Idle);
         assert_eq!(tool.state_patterns[1].target_state, SessionState::Running);
-        assert_eq!(tool.state_patterns[2].target_state, SessionState::WaitingForInput);
+        assert_eq!(
+            tool.state_patterns[2].target_state,
+            SessionState::WaitingForInput
+        );
         assert_eq!(tool.state_patterns[3].target_state, SessionState::Error);
     }
 
@@ -509,7 +521,8 @@ state = "Error"
 
     #[test]
     fn test_load_from_config_nonexistent_dir() {
-        let registry = ToolRegistry::load_from_config(Path::new("/tmp/nonexistent_surfterm_dir_xyz"));
+        let registry =
+            ToolRegistry::load_from_config(Path::new("/tmp/nonexistent_surfterm_dir_xyz"));
         assert_eq!(registry.tool_count(), 0);
     }
 

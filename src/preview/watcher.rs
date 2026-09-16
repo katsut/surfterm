@@ -95,26 +95,27 @@ impl FileWatcher {
         let (tx, rx) = mpsc::channel::<FileChangeEvent>(256);
         let event_tx = tx.clone();
 
-        let watcher = notify::recommended_watcher(move |res: std::result::Result<Event, notify::Error>| {
-            if let Ok(event) = res {
-                let kind = match event.kind {
-                    EventKind::Create(_) => Some(ChangeKind::Created),
-                    EventKind::Modify(_) => Some(ChangeKind::Modified),
-                    EventKind::Remove(_) => Some(ChangeKind::Deleted),
-                    _ => None,
-                };
+        let watcher =
+            notify::recommended_watcher(move |res: std::result::Result<Event, notify::Error>| {
+                if let Ok(event) = res {
+                    let kind = match event.kind {
+                        EventKind::Create(_) => Some(ChangeKind::Created),
+                        EventKind::Modify(_) => Some(ChangeKind::Modified),
+                        EventKind::Remove(_) => Some(ChangeKind::Deleted),
+                        _ => None,
+                    };
 
-                if let Some(kind) = kind {
-                    for path in event.paths {
-                        let _ = tx.blocking_send(FileChangeEvent {
-                            path,
-                            kind: kind.clone(),
-                        });
+                    if let Some(kind) = kind {
+                        for path in event.paths {
+                            let _ = tx.blocking_send(FileChangeEvent {
+                                path,
+                                kind: kind.clone(),
+                            });
+                        }
                     }
                 }
-            }
-        })
-        .context("failed to create file watcher")?;
+            })
+            .context("failed to create file watcher")?;
 
         Ok((
             Self {
