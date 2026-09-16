@@ -116,8 +116,14 @@ impl StreamSplitter {
         ];
 
         let message_patterns = vec![
-            ("ai_greeting", r"(?i)^(hello|hi|hey|I'll help|I can help|let me|sure|certainly)"),
-            ("ai_explanation", r"(?i)^(here('s| is)|this (is|will)|the |I('ve| have| will| would))"),
+            (
+                "ai_greeting",
+                r"(?i)^(hello|hi|hey|I'll help|I can help|let me|sure|certainly)",
+            ),
+            (
+                "ai_explanation",
+                r"(?i)^(here('s| is)|this (is|will)|the |I('ve| have| will| would))",
+            ),
             ("ai_markdown_header", r"^#{1,6}\s"),
             ("ai_bullet_list", r"^\s*[-*]\s"),
             ("ai_numbered_list", r"^\s*\d+\.\s"),
@@ -331,10 +337,7 @@ mod tests {
         splitter.classify_chunk("こんにちは世界".as_bytes());
         let chunk = channels.raw_rx.try_recv().unwrap();
         assert_eq!(chunk.classification, Classification::Raw);
-        assert_eq!(
-            String::from_utf8(chunk.data).unwrap(),
-            "こんにちは世界"
-        );
+        assert_eq!(String::from_utf8(chunk.data).unwrap(), "こんにちは世界");
     }
 
     #[test]

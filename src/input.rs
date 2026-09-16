@@ -168,8 +168,8 @@ pub fn encode_key(key: &Key, modifiers: ModifiersState) -> Option<Vec<u8>> {
     if modifiers.alt_key() {
         match key {
             Key::Named(NamedKey::Backspace) => return Some(b"\x1b\x7f".to_vec()), // Alt+Backspace: delete word
-            Key::Named(NamedKey::ArrowLeft) => return Some(b"\x1bb".to_vec()),     // Alt+Left: word left
-            Key::Named(NamedKey::ArrowRight) => return Some(b"\x1bf".to_vec()),    // Alt+Right: word right
+            Key::Named(NamedKey::ArrowLeft) => return Some(b"\x1bb".to_vec()), // Alt+Left: word left
+            Key::Named(NamedKey::ArrowRight) => return Some(b"\x1bf".to_vec()), // Alt+Right: word right
             Key::Character(c) => {
                 // Alt+char sends ESC + char
                 let mut bytes = vec![0x1b];
@@ -579,10 +579,7 @@ mod tests {
 
     #[test]
     fn encode_key_unknown_named_returns_none() {
-        let result = encode_key(
-            &named_key(NamedKey::PrintScreen),
-            ModifiersState::empty(),
-        );
+        let result = encode_key(&named_key(NamedKey::PrintScreen), ModifiersState::empty());
         assert_eq!(result, None);
     }
 

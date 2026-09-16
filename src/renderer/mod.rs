@@ -13,7 +13,10 @@ use crate::session::state::SessionState;
 use crate::session::terminal::{TerminalCell, TerminalContent};
 
 use self::grid::GridLayout;
-use self::panel::{CardInfo, CardStack, DisplayMode, MessagePanel, PanelColors, SidePanel, SidePanelEntry, StatePanel};
+use self::panel::{
+    CardInfo, CardStack, DisplayMode, MessagePanel, PanelColors, SidePanel, SidePanelEntry,
+    StatePanel,
+};
 use self::text::{RenderRegion, TextRenderer};
 
 /// Default font size in logical pixels for terminal cell rendering.
@@ -273,7 +276,10 @@ impl Renderer {
         let content_x = main_rect.x;
 
         // ── Active card title line (row 0): "── name [state] ────────" ──
-        if let Some(title_row) = self.card_stack.active_title_line_themed(main_cols, &self.panel_colors) {
+        if let Some(title_row) = self
+            .card_stack
+            .active_title_line_themed(main_cols, &self.panel_colors)
+        {
             regions.push(RenderRegion {
                 cells: vec![title_row],
                 origin_x: content_x,
@@ -312,12 +318,15 @@ impl Renderer {
                         bg,
                         bold: false,
                         italic: false,
-                        underline: false, wide: false, wide_spacer: false,
+                        underline: false,
+                        wide: false,
+                        wide_spacer: false,
                     };
                     regions.push(RenderRegion {
                         cells: vec![vec![cursor_cell]],
                         origin_x: content_x + content.cursor_col as f32 * self.grid.cell_width,
-                        origin_y: content_origin_y + content.cursor_row as f32 * self.grid.cell_height,
+                        origin_y: content_origin_y
+                            + content.cursor_row as f32 * self.grid.cell_height,
                         cell_width: self.grid.cell_width,
                         cell_height: self.grid.cell_height,
                     });
@@ -360,12 +369,29 @@ impl Renderer {
                 let text = format!("... +{} more", hidden);
                 let dim_fg = self.panel_colors.state_idle;
                 let bg = self.panel_colors.background;
-                let mut overflow_row: Vec<TerminalCell> = text.chars().map(|c| {
-                    TerminalCell { c, fg: dim_fg, bg, bold: false, italic: true, underline: false, wide: false, wide_spacer: false }
-                }).collect();
+                let mut overflow_row: Vec<TerminalCell> = text
+                    .chars()
+                    .map(|c| TerminalCell {
+                        c,
+                        fg: dim_fg,
+                        bg,
+                        bold: false,
+                        italic: true,
+                        underline: false,
+                        wide: false,
+                        wide_spacer: false,
+                    })
+                    .collect();
                 while overflow_row.len() < main_cols {
                     overflow_row.push(TerminalCell {
-                        c: ' ', fg: dim_fg, bg, bold: false, italic: false, underline: false, wide: false, wide_spacer: false,
+                        c: ' ',
+                        fg: dim_fg,
+                        bg,
+                        bold: false,
+                        italic: false,
+                        underline: false,
+                        wide: false,
+                        wide_spacer: false,
                     });
                 }
                 let origin_y = main_rect.y + current_row as f32 * self.grid.cell_height;
@@ -423,7 +449,9 @@ impl Renderer {
                             bg: divider_bg,
                             bold: false,
                             italic: false,
-                            underline: false, wide: false, wide_spacer: false,
+                            underline: false,
+                            wide: false,
+                            wide_spacer: false,
                         }]
                     })
                     .collect();
@@ -444,8 +472,8 @@ impl Renderer {
                 for di in 0..dense_count {
                     let y_pos = di as f32 * dense_height;
                     let grid_row = (y_pos / self.grid.cell_height) as usize;
-                    let skip = Some(grid_row) == active_sidebar_row
-                        || bg_title_rows.contains(&grid_row);
+                    let skip =
+                        Some(grid_row) == active_sidebar_row || bg_title_rows.contains(&grid_row);
                     let ch = if skip { ' ' } else { '\u{2595}' };
                     dense_cells.push(vec![TerminalCell {
                         c: ch,
@@ -453,7 +481,9 @@ impl Renderer {
                         bg: divider_bg,
                         bold: false,
                         italic: false,
-                        underline: false, wide: false, wide_spacer: false,
+                        underline: false,
+                        wide: false,
+                        wide_spacer: false,
                     }]);
                 }
                 regions.push(RenderRegion {

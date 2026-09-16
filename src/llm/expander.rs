@@ -52,7 +52,10 @@ impl PromptExpander {
             short_input
         );
 
-        match self.runtime.infer(&prompt, Self::MAX_TOKENS, self.timeout_ms) {
+        match self
+            .runtime
+            .infer(&prompt, Self::MAX_TOKENS, self.timeout_ms)
+        {
             Ok(Some(expanded)) if !expanded.trim().is_empty() => Some(expanded),
             _ => None,
         }

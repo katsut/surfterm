@@ -96,16 +96,14 @@ async fn handle_connection(
     // Read messages from the client
     while let Some(msg) = ws_rx.next().await {
         match msg {
-            Ok(Message::Text(text)) => {
-                match parse_ws_message(&text) {
-                    Ok(cmd) => {
-                        let _ = event_tx.send(WsEvent::CommandReceived(cmd)).await;
-                    }
-                    Err(e) => {
-                        tracing::warn!(%addr, "Invalid WebSocket message: {e}");
-                    }
+            Ok(Message::Text(text)) => match parse_ws_message(&text) {
+                Ok(cmd) => {
+                    let _ = event_tx.send(WsEvent::CommandReceived(cmd)).await;
                 }
-            }
+                Err(e) => {
+                    tracing::warn!(%addr, "Invalid WebSocket message: {e}");
+                }
+            },
             Ok(Message::Close(_)) => break,
             Err(e) => {
                 tracing::debug!(%addr, "WebSocket read error: {e}");

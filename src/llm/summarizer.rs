@@ -56,7 +56,10 @@ impl SessionSummarizer {
             joined
         );
 
-        match self.runtime.infer(&prompt, Self::MAX_TOKENS, self.timeout_ms) {
+        match self
+            .runtime
+            .infer(&prompt, Self::MAX_TOKENS, self.timeout_ms)
+        {
             Ok(Some(summary)) if !summary.trim().is_empty() => Some(summary),
             _ => None,
         }
@@ -69,11 +72,7 @@ impl SessionSummarizer {
     /// - Falls back to the last message in the history, truncated to `max_len`
     /// - Returns "(empty session)" if the history is empty
     #[instrument(skip(self, conversation_history))]
-    pub fn summarize_or_truncate(
-        &self,
-        conversation_history: &[String],
-        max_len: usize,
-    ) -> String {
+    pub fn summarize_or_truncate(&self, conversation_history: &[String], max_len: usize) -> String {
         // Try LLM summary first.
         if let Some(summary) = self.summarize(conversation_history) {
             return truncate_str(&summary, max_len);

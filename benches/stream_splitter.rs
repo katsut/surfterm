@@ -103,8 +103,14 @@ fn bench_regex_pattern_matching(c: &mut Criterion) {
     let regexes: Vec<(&str, Regex)> = vec![
         ("tool_indicator", Regex::new(r"⏺").unwrap()),
         ("cost_line", Regex::new(r"(?i)cost:\s*\$").unwrap()),
-        ("ai_greeting", Regex::new(r"(?i)^(hello|hi|hey|I'll help|I can help|let me|sure|certainly)").unwrap()),
-        ("permission_prompt", Regex::new(r"(?i)allow|deny|permission").unwrap()),
+        (
+            "ai_greeting",
+            Regex::new(r"(?i)^(hello|hi|hey|I'll help|I can help|let me|sure|certainly)").unwrap(),
+        ),
+        (
+            "permission_prompt",
+            Regex::new(r"(?i)allow|deny|permission").unwrap(),
+        ),
     ];
 
     let test_lines = [
@@ -145,7 +151,9 @@ fn bench_state_detector_process_chunk(c: &mut Criterion) {
     );
 
     // Multi-state chunk: triggers multiple state transitions
-    let multi = "⏺ Read src/main.rs\nsome output\nError: something broke\nWould you like to proceed?".as_bytes();
+    let multi =
+        "⏺ Read src/main.rs\nsome output\nError: something broke\nWould you like to proceed?"
+            .as_bytes();
     group.bench_with_input(
         BenchmarkId::new("multi_transition", "run_err_wait"),
         &multi,

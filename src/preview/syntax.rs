@@ -64,10 +64,7 @@ impl SyntaxHighlighter {
     pub fn highlight_file(&self, path: &Path) -> Result<Vec<HighlightedLine>> {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("failed to read file: {}", path.display()))?;
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
         Ok(self.highlight_content(&content, ext))
     }
 
@@ -153,7 +150,9 @@ pub fn to_terminal_cells(
                 bg: DEFAULT_BG,
                 bold: false,
                 italic: false,
-                underline: false, wide: false, wide_spacer: false,
+                underline: false,
+                wide: false,
+                wide_spacer: false,
             });
         }
 
@@ -169,7 +168,9 @@ pub fn to_terminal_cells(
                     bg: DEFAULT_BG,
                     bold: false,
                     italic: false,
-                    underline: false, wide: false, wide_spacer: false,
+                    underline: false,
+                    wide: false,
+                    wide_spacer: false,
                 });
             }
         }
@@ -182,7 +183,9 @@ pub fn to_terminal_cells(
                 bg: DEFAULT_BG,
                 bold: false,
                 italic: false,
-                underline: false, wide: false, wide_spacer: false,
+                underline: false,
+                wide: false,
+                wide_spacer: false,
             });
         }
 
@@ -198,7 +201,9 @@ pub fn to_terminal_cells(
                 bg: DEFAULT_BG,
                 bold: false,
                 italic: false,
-                underline: false, wide: false, wide_spacer: false,
+                underline: false,
+                wide: false,
+                wide_spacer: false,
             };
             cols
         ];
@@ -224,12 +229,13 @@ mod tests {
         assert_eq!(lines[0].line_number, 1);
 
         // At least some spans should have non-white colors (syntax highlighting).
-        let has_color = lines.iter().any(|line| {
-            line.spans
-                .iter()
-                .any(|s| s.fg != Rgb::new(255, 255, 255))
-        });
-        assert!(has_color, "syntax highlighting should produce colored spans");
+        let has_color = lines
+            .iter()
+            .any(|line| line.spans.iter().any(|s| s.fg != Rgb::new(255, 255, 255)));
+        assert!(
+            has_color,
+            "syntax highlighting should produce colored spans"
+        );
     }
 
     #[test]

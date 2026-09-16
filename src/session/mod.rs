@@ -125,9 +125,8 @@ impl SessionManager {
     ) -> Result<SessionId> {
         let id = SessionId::new();
 
-        let cwd = cwd.unwrap_or_else(|| {
-            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
-        });
+        let cwd =
+            cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")));
 
         let project_name = cwd
             .file_name()
