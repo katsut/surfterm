@@ -10,12 +10,14 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use surfterm::ws::server::start_ws_server;
-use surfterm::ws::{WsEvent, WsOutMessage, SessionStatusData};
+use surfterm::ws::{SessionStatusData, WsEvent, WsOutMessage};
 
 #[tokio::test]
 async fn ws_server_starts_and_accepts_connection() {
     let (event_tx, mut event_rx) = mpsc::channel::<WsEvent>(64);
-    let handle = start_ws_server(event_tx).await.expect("server should start");
+    let handle = start_ws_server(event_tx)
+        .await
+        .expect("server should start");
     let port = handle.port();
     assert!(port > 0);
 
@@ -42,7 +44,9 @@ async fn ws_server_starts_and_accepts_connection() {
 #[tokio::test]
 async fn ws_server_broadcasts_sessions() {
     let (event_tx, _event_rx) = mpsc::channel::<WsEvent>(64);
-    let handle = start_ws_server(event_tx).await.expect("server should start");
+    let handle = start_ws_server(event_tx)
+        .await
+        .expect("server should start");
     let port = handle.port();
 
     let url = format!("ws://127.0.0.1:{}", port);
@@ -79,7 +83,9 @@ async fn ws_server_broadcasts_sessions() {
 #[tokio::test]
 async fn ws_server_receives_commands() {
     let (event_tx, mut event_rx) = mpsc::channel::<WsEvent>(64);
-    let handle = start_ws_server(event_tx).await.expect("server should start");
+    let handle = start_ws_server(event_tx)
+        .await
+        .expect("server should start");
     let port = handle.port();
 
     let url = format!("ws://127.0.0.1:{}", port);
@@ -118,7 +124,9 @@ async fn ws_server_receives_commands() {
 #[tokio::test]
 async fn ws_server_broadcasts_pty_output() {
     let (event_tx, _event_rx) = mpsc::channel::<WsEvent>(64);
-    let handle = start_ws_server(event_tx).await.expect("server should start");
+    let handle = start_ws_server(event_tx)
+        .await
+        .expect("server should start");
     let port = handle.port();
 
     let url = format!("ws://127.0.0.1:{}", port);
@@ -156,7 +164,9 @@ async fn ws_server_broadcasts_pty_output() {
 #[tokio::test]
 async fn ws_server_handles_pty_input_command() {
     let (event_tx, mut event_rx) = mpsc::channel::<WsEvent>(64);
-    let handle = start_ws_server(event_tx).await.expect("server should start");
+    let handle = start_ws_server(event_tx)
+        .await
+        .expect("server should start");
     let port = handle.port();
 
     let url = format!("ws://127.0.0.1:{}", port);
@@ -200,7 +210,9 @@ async fn ws_server_handles_pty_input_command() {
 #[tokio::test]
 async fn ws_server_handles_resize_command() {
     let (event_tx, mut event_rx) = mpsc::channel::<WsEvent>(64);
-    let handle = start_ws_server(event_tx).await.expect("server should start");
+    let handle = start_ws_server(event_tx)
+        .await
+        .expect("server should start");
     let port = handle.port();
 
     let url = format!("ws://127.0.0.1:{}", port);
@@ -238,7 +250,9 @@ async fn ws_server_handles_resize_command() {
 #[tokio::test]
 async fn ws_server_multiple_clients() {
     let (event_tx, mut event_rx) = mpsc::channel::<WsEvent>(64);
-    let handle = start_ws_server(event_tx).await.expect("server should start");
+    let handle = start_ws_server(event_tx)
+        .await
+        .expect("server should start");
     let port = handle.port();
     let url = format!("ws://127.0.0.1:{}", port);
 

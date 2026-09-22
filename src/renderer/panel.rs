@@ -80,7 +80,7 @@ impl PanelColors {
 
             // These are derived / kept as Catppuccin convention from the theme's foreground
             state_header: theme.colors.sidebar.separator.to_rgb(), // #585b70
-            state_tool: Rgb::new(0x89, 0xdc, 0xeb), // sky — not in theme, keep as-is
+            state_tool: Rgb::new(0x89, 0xdc, 0xeb),                // sky — not in theme, keep as-is
             state_info: theme.colors.foreground.to_rgb(),
             state_dim: Rgb::new(0xa6, 0xad, 0xc8), // subtext0 — not in theme
 
@@ -195,7 +195,12 @@ impl SidePanel {
     /// - Row 0: "[+ New Session]" in green, highlighted if selected
     /// - Row 1: "─────────" separator in dim
     /// - Row 2+: Each session entry with state dot and project name
-    pub fn to_terminal_cells(&self, cols: u16, rows: u16, _scale_factor: f32) -> Vec<Vec<TerminalCell>> {
+    pub fn to_terminal_cells(
+        &self,
+        cols: u16,
+        rows: u16,
+        _scale_factor: f32,
+    ) -> Vec<Vec<TerminalCell>> {
         self.to_terminal_cells_themed(cols, rows, _scale_factor, &PanelColors::default())
     }
 
@@ -231,7 +236,9 @@ impl SidePanel {
                     bg,
                     bold: self.selected_index == 0,
                     italic: false,
-                    underline: false, wide: false, wide_spacer: false,
+                    underline: false,
+                    wide: false,
+                    wide_spacer: false,
                 });
             }
             while row.len() < cols {
@@ -241,7 +248,9 @@ impl SidePanel {
                     bg,
                     bold: false,
                     italic: false,
-                    underline: false, wide: false, wide_spacer: false,
+                    underline: false,
+                    wide: false,
+                    wide_spacer: false,
                 });
             }
             result.push(row);
@@ -257,7 +266,9 @@ impl SidePanel {
                     bg: colors.background,
                     bold: false,
                     italic: false,
-                    underline: false, wide: false, wide_spacer: false,
+                    underline: false,
+                    wide: false,
+                    wide_spacer: false,
                 });
             }
             result.push(sep_row);
@@ -302,7 +313,9 @@ impl SidePanel {
                     bg,
                     bold: is_selected,
                     italic: false,
-                    underline: false, wide: false, wide_spacer: false,
+                    underline: false,
+                    wide: false,
+                    wide_spacer: false,
                 });
             }
             while row.len() < cols {
@@ -312,7 +325,9 @@ impl SidePanel {
                     bg,
                     bold: false,
                     italic: false,
-                    underline: false, wide: false, wide_spacer: false,
+                    underline: false,
+                    wide: false,
+                    wide_spacer: false,
                 });
             }
             result.push(row);
@@ -320,13 +335,21 @@ impl SidePanel {
 
         // Pad remaining rows (leave last row for WS status)
         while result.len() < rows.saturating_sub(1) {
-            result.push(make_row_colored("", cols, colors.side_separator, colors.background));
+            result.push(make_row_colored(
+                "",
+                cols,
+                colors.side_separator,
+                colors.background,
+            ));
         }
 
         // Last row: WebSocket status indicator
         if result.len() < rows {
             let (text, fg) = if self.ws_active && self.ws_clients > 0 {
-                (format!("WS: {}dev ⇧⌘M", self.ws_clients), colors.state_waiting)
+                (
+                    format!("WS: {}dev ⇧⌘M", self.ws_clients),
+                    colors.state_waiting,
+                )
             } else if self.ws_active {
                 ("WS: ON ⇧⌘M".to_string(), colors.main_color)
             } else {
@@ -340,7 +363,9 @@ impl SidePanel {
                     bg: colors.background,
                     bold: false,
                     italic: false,
-                    underline: false, wide: false, wide_spacer: false,
+                    underline: false,
+                    wide: false,
+                    wide_spacer: false,
                 });
             }
             while row.len() < cols {
@@ -350,7 +375,9 @@ impl SidePanel {
                     bg: colors.background,
                     bold: false,
                     italic: false,
-                    underline: false, wide: false, wide_spacer: false,
+                    underline: false,
+                    wide: false,
+                    wide_spacer: false,
                 });
             }
             result.push(row);
@@ -447,7 +474,13 @@ impl CardStack {
         for _ in 0..cols {
             border_row.push(TerminalCell {
                 c: '\u{2500}', // ─
-                fg: border_fg, bg, bold: false, italic: false, underline: false, wide: false, wide_spacer: false,
+                fg: border_fg,
+                bg,
+                bold: false,
+                italic: false,
+                underline: false,
+                wide: false,
+                wide_spacer: false,
             });
         }
 
@@ -455,11 +488,26 @@ impl CardStack {
         let mut content_row = Vec::with_capacity(cols);
         content_row.push(TerminalCell {
             c: '\u{2595}', // ▕
-            fg: border_fg, bg, bold: false, italic: false, underline: false, wide: false, wide_spacer: false,
+            fg: border_fg,
+            bg,
+            bold: false,
+            italic: false,
+            underline: false,
+            wide: false,
+            wide_spacer: false,
         });
 
         let inner_cols = cols.saturating_sub(1); // only left border
-        Self::fill_card_content(&mut content_row, card, inner_cols, title_fg, border_fg, state_fg, state_label, bg);
+        Self::fill_card_content(
+            &mut content_row,
+            card,
+            inner_cols,
+            title_fg,
+            border_fg,
+            state_fg,
+            state_label,
+            bg,
+        );
 
         vec![border_row, content_row]
     }
@@ -491,18 +539,37 @@ impl CardStack {
         let border_row: Vec<TerminalCell> = (0..cols)
             .map(|_| TerminalCell {
                 c: '\u{2500}', // ─
-                fg: border_fg, bg, bold: false, italic: false, underline: false, wide: false, wide_spacer: false,
+                fg: border_fg,
+                bg,
+                bold: false,
+                italic: false,
+                underline: false,
+                wide: false,
+                wide_spacer: false,
             })
             .collect();
 
         // Row 1: " name   [state] " (no borders)
         let mut content_row = Vec::with_capacity(cols);
-        Self::fill_card_content(&mut content_row, card, cols, title_fg, border_fg, state_fg, state_label, bg);
+        Self::fill_card_content(
+            &mut content_row,
+            card,
+            cols,
+            title_fg,
+            border_fg,
+            state_fg,
+            state_label,
+            bg,
+        );
 
         vec![border_row, content_row]
     }
 
     /// Fill card content cells: " name <padding> [state] "
+    // Private row-painting helper: the parameters are all independent colors and
+    // metrics the caller already has, so bundling them into a struct would only
+    // move the argument list one call up.
+    #[allow(clippy::too_many_arguments)]
     fn fill_card_content(
         row: &mut Vec<TerminalCell>,
         card: &CardInfo,
@@ -516,28 +583,62 @@ impl CardStack {
         let state_part = format!("[{}]", state_label);
         let name_chars: Vec<char> = card.project_name.chars().collect();
         let state_chars: Vec<char> = state_part.chars().collect();
-        let name_display_len = name_chars.len().min(cols.saturating_sub(state_chars.len() + 3));
+        let name_display_len = name_chars
+            .len()
+            .min(cols.saturating_sub(state_chars.len() + 3));
         let state_start = cols.saturating_sub(state_chars.len() + 1);
 
         for i in 0..cols {
             if i == 0 {
                 row.push(TerminalCell {
-                    c: ' ', fg: title_fg, bg, bold: card.is_active, italic: false, underline: false, wide: false, wide_spacer: false,
+                    c: ' ',
+                    fg: title_fg,
+                    bg,
+                    bold: card.is_active,
+                    italic: false,
+                    underline: false,
+                    wide: false,
+                    wide_spacer: false,
                 });
             } else if i >= 1 && i < 1 + name_display_len {
                 row.push(TerminalCell {
-                    c: name_chars[i - 1], fg: title_fg, bg, bold: card.is_active, italic: false, underline: false, wide: false, wide_spacer: false,
+                    c: name_chars[i - 1],
+                    fg: title_fg,
+                    bg,
+                    bold: card.is_active,
+                    italic: false,
+                    underline: false,
+                    wide: false,
+                    wide_spacer: false,
                 });
             } else if i >= state_start && i < state_start + state_chars.len() {
                 let si = i - state_start;
                 let ch = state_chars[si];
-                let fg = if ch != '[' && ch != ']' { state_fg } else { border_fg };
+                let fg = if ch != '[' && ch != ']' {
+                    state_fg
+                } else {
+                    border_fg
+                };
                 row.push(TerminalCell {
-                    c: ch, fg, bg, bold: false, italic: false, underline: false, wide: false, wide_spacer: false,
+                    c: ch,
+                    fg,
+                    bg,
+                    bold: false,
+                    italic: false,
+                    underline: false,
+                    wide: false,
+                    wide_spacer: false,
                 });
             } else {
                 row.push(TerminalCell {
-                    c: ' ', fg: border_fg, bg, bold: false, italic: false, underline: false, wide: false, wide_spacer: false,
+                    c: ' ',
+                    fg: border_fg,
+                    bg,
+                    bold: false,
+                    italic: false,
+                    underline: false,
+                    wide: false,
+                    wide_spacer: false,
                 });
             }
         }
@@ -546,7 +647,11 @@ impl CardStack {
     /// Build terminal cells for the active card's tab using theme colors.
     /// Returns 2 rows: top border + content row. Right edge open (divider handles it).
     #[allow(dead_code)]
-    pub fn active_card_tab_themed(&self, cols: usize, colors: &PanelColors) -> Option<Vec<Vec<TerminalCell>>> {
+    pub fn active_card_tab_themed(
+        &self,
+        cols: usize,
+        colors: &PanelColors,
+    ) -> Option<Vec<Vec<TerminalCell>>> {
         self.active_card().map(|card| {
             Self::build_active_card_tab(
                 card,
@@ -562,7 +667,11 @@ impl CardStack {
     /// Build a single title line for the active card.
     ///
     /// Format: `── name [state] ─────────────`
-    pub fn active_title_line_themed(&self, cols: usize, colors: &PanelColors) -> Option<Vec<TerminalCell>> {
+    pub fn active_title_line_themed(
+        &self,
+        cols: usize,
+        colors: &PanelColors,
+    ) -> Option<Vec<TerminalCell>> {
         self.active_card().map(|card| {
             Self::build_title_line(
                 card,
@@ -604,7 +713,8 @@ impl CardStack {
         let name_end = name_start + card.project_name.chars().count();
 
         for (i, &ch) in content_chars.iter().enumerate().take(cols) {
-            let fg = if bracket_open.is_some_and(|o| i > o) && bracket_close.is_some_and(|c| i < c) {
+            let fg = if bracket_open.is_some_and(|o| i > o) && bracket_close.is_some_and(|c| i < c)
+            {
                 state_fg
             } else if i >= name_start && i < name_end {
                 title_fg
@@ -613,14 +723,28 @@ impl CardStack {
             };
             let bold = card.is_active && i >= name_start && i < name_end;
             row.push(TerminalCell {
-                c: ch, fg, bg, bold, italic: false, underline: false, wide: false, wide_spacer: false,
+                c: ch,
+                fg,
+                bg,
+                bold,
+                italic: false,
+                underline: false,
+                wide: false,
+                wide_spacer: false,
             });
         }
 
         // Fill remaining with ─
         while row.len() < cols {
             row.push(TerminalCell {
-                c: '\u{2500}', fg: border_fg, bg, bold: false, italic: false, underline: false, wide: false, wide_spacer: false,
+                c: '\u{2500}',
+                fg: border_fg,
+                bg,
+                bold: false,
+                italic: false,
+                underline: false,
+                wide: false,
+                wide_spacer: false,
             });
         }
 
@@ -802,15 +926,29 @@ impl SessionList {
         let mut result: Vec<Vec<TerminalCell>> = Vec::with_capacity(rows);
 
         // Header
-        result.push(make_row_colored("── Sessions ──", cols, colors.state_header, colors.background));
+        result.push(make_row_colored(
+            "── Sessions ──",
+            cols,
+            colors.state_header,
+            colors.background,
+        ));
 
         // Collect entries by layer group
-        let pinned: Vec<&SessionListEntry> =
-            self.entries.iter().filter(|e| e.layer == Layer::Pinned).collect();
-        let foreground: Vec<&SessionListEntry> =
-            self.entries.iter().filter(|e| e.layer == Layer::Foreground).collect();
-        let background: Vec<&SessionListEntry> =
-            self.entries.iter().filter(|e| e.layer == Layer::Background).collect();
+        let pinned: Vec<&SessionListEntry> = self
+            .entries
+            .iter()
+            .filter(|e| e.layer == Layer::Pinned)
+            .collect();
+        let foreground: Vec<&SessionListEntry> = self
+            .entries
+            .iter()
+            .filter(|e| e.layer == Layer::Foreground)
+            .collect();
+        let background: Vec<&SessionListEntry> = self
+            .entries
+            .iter()
+            .filter(|e| e.layer == Layer::Background)
+            .collect();
 
         // Track flat index for selection highlighting
         let mut flat_index: usize = 0;
@@ -830,7 +968,12 @@ impl SessionList {
                 break;
             }
             // Group header
-            result.push(make_row_colored(group_name, cols, colors.state_header, colors.background));
+            result.push(make_row_colored(
+                group_name,
+                cols,
+                colors.state_header,
+                colors.background,
+            ));
 
             for entry in group_entries {
                 if result.len() >= rows {
@@ -847,7 +990,11 @@ impl SessionList {
                     SessionState::Idle => ("Idle", colors.state_idle),
                 };
 
-                let pin_marker = if entry.layer == Layer::Pinned { "* " } else { "  " };
+                let pin_marker = if entry.layer == Layer::Pinned {
+                    "* "
+                } else {
+                    "  "
+                };
                 let text = format!(
                     "{pin_marker}[{}] {} [{}]",
                     entry.index, entry.project_name, state_label
@@ -867,7 +1014,9 @@ impl SessionList {
                         bg,
                         bold: is_selected,
                         italic: false,
-                        underline: false, wide: false, wide_spacer: false,
+                        underline: false,
+                        wide: false,
+                        wide_spacer: false,
                     });
                 }
                 while row.len() < cols {
@@ -877,7 +1026,9 @@ impl SessionList {
                         bg,
                         bold: false,
                         italic: false,
-                        underline: false, wide: false, wide_spacer: false,
+                        underline: false,
+                        wide: false,
+                        wide_spacer: false,
                     });
                 }
                 result.push(row);
@@ -886,7 +1037,12 @@ impl SessionList {
 
         // Pad remaining rows
         while result.len() < rows {
-            result.push(make_row_colored("", cols, colors.state_dim, colors.background));
+            result.push(make_row_colored(
+                "",
+                cols,
+                colors.state_dim,
+                colors.background,
+            ));
         }
 
         result
@@ -1018,7 +1174,11 @@ impl MessagePanel {
         // Convert to TerminalCell rows.
         let mut result = Vec::with_capacity(rows);
         for (line, is_user) in &visible {
-            let fg = if *is_user { colors.user_input } else { colors.ai_response };
+            let fg = if *is_user {
+                colors.user_input
+            } else {
+                colors.ai_response
+            };
             let mut row = Vec::with_capacity(cols);
             for ch in line.chars().take(cols) {
                 row.push(TerminalCell {
@@ -1027,7 +1187,9 @@ impl MessagePanel {
                     bg: colors.background,
                     bold: false,
                     italic: false,
-                    underline: false, wide: false, wide_spacer: false,
+                    underline: false,
+                    wide: false,
+                    wide_spacer: false,
                 });
             }
             // Pad remaining columns with spaces.
@@ -1038,7 +1200,9 @@ impl MessagePanel {
                     bg: colors.background,
                     bold: false,
                     italic: false,
-                    underline: false, wide: false, wide_spacer: false,
+                    underline: false,
+                    wide: false,
+                    wide_spacer: false,
                 });
             }
             result.push(row);
@@ -1054,7 +1218,9 @@ impl MessagePanel {
                     bg: colors.background,
                     bold: false,
                     italic: false,
-                    underline: false, wide: false, wide_spacer: false,
+                    underline: false,
+                    wide: false,
+                    wide_spacer: false,
                 });
             }
             result.push(row);
@@ -1162,7 +1328,12 @@ impl StatePanel {
         let mut result: Vec<Vec<TerminalCell>> = Vec::with_capacity(rows);
 
         // Row 0: header
-        result.push(make_row_colored("── State ──", cols, colors.state_header, colors.background));
+        result.push(make_row_colored(
+            "── State ──",
+            cols,
+            colors.state_header,
+            colors.background,
+        ));
 
         // Row 1: state indicator
         if result.len() < rows {
@@ -1181,7 +1352,12 @@ impl StatePanel {
                 Some(tool) => format!("Tool: {tool}"),
                 None => "Tool: -".to_string(),
             };
-            result.push(make_row_colored(&text, cols, colors.state_tool, colors.background));
+            result.push(make_row_colored(
+                &text,
+                cols,
+                colors.state_tool,
+                colors.background,
+            ));
         }
 
         // Row 3: cost
@@ -1190,7 +1366,12 @@ impl StatePanel {
                 Some(c) => format!("Cost: {c}"),
                 None => "Cost: -".to_string(),
             };
-            result.push(make_row_colored(&text, cols, colors.state_info, colors.background));
+            result.push(make_row_colored(
+                &text,
+                cols,
+                colors.state_info,
+                colors.background,
+            ));
         }
 
         // Row 4: tokens
@@ -1199,13 +1380,23 @@ impl StatePanel {
                 Some(t) => format!("Tokens: {t}"),
                 None => "Tokens: -".to_string(),
             };
-            result.push(make_row_colored(&text, cols, colors.state_info, colors.background));
+            result.push(make_row_colored(
+                &text,
+                cols,
+                colors.state_info,
+                colors.background,
+            ));
         }
 
         // Row 5: separator
         if result.len() < rows {
             let sep: String = "─".repeat(cols.min(40));
-            result.push(make_row_colored(&sep, cols, colors.state_header, colors.background));
+            result.push(make_row_colored(
+                &sep,
+                cols,
+                colors.state_header,
+                colors.background,
+            ));
         }
 
         // Row 6+: recent state lines
@@ -1218,13 +1409,23 @@ impl StatePanel {
                 if result.len() >= rows {
                     break;
                 }
-                result.push(make_row_colored(&w, cols, colors.state_dim, colors.background));
+                result.push(make_row_colored(
+                    &w,
+                    cols,
+                    colors.state_dim,
+                    colors.background,
+                ));
             }
         }
 
         // Pad remaining rows
         while result.len() < rows {
-            result.push(make_row_colored("", cols, colors.state_dim, colors.background));
+            result.push(make_row_colored(
+                "",
+                cols,
+                colors.state_dim,
+                colors.background,
+            ));
         }
 
         result
@@ -1241,7 +1442,9 @@ fn make_row_colored(text: &str, cols: usize, fg: Rgb, bg: Rgb) -> Vec<TerminalCe
             bg,
             bold: false,
             italic: false,
-            underline: false, wide: false, wide_spacer: false,
+            underline: false,
+            wide: false,
+            wide_spacer: false,
         });
     }
     while row.len() < cols {
@@ -1251,7 +1454,9 @@ fn make_row_colored(text: &str, cols: usize, fg: Rgb, bg: Rgb) -> Vec<TerminalCe
             bg,
             bold: false,
             italic: false,
-            underline: false, wide: false, wide_spacer: false,
+            underline: false,
+            wide: false,
+            wide_spacer: false,
         });
     }
     row
@@ -1260,7 +1465,17 @@ fn make_row_colored(text: &str, cols: usize, fg: Rgb, bg: Rgb) -> Vec<TerminalCe
 /// Extract tool name from lines like "⏺ Read src/main.rs" or "Read src/main.rs".
 fn extract_tool_name(line: &str) -> Option<String> {
     let trimmed = line.trim().trim_start_matches('⏺').trim();
-    let tools = ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "Skill", "TodoWrite", "Agent"];
+    let tools = [
+        "Read",
+        "Write",
+        "Edit",
+        "Bash",
+        "Glob",
+        "Grep",
+        "Skill",
+        "TodoWrite",
+        "Agent",
+    ];
     for tool in &tools {
         if trimmed.starts_with(tool) {
             return Some((*tool).to_string());
@@ -1466,28 +1681,44 @@ mod tests {
         // Idle (default)
         let cells = panel.to_terminal_cells(cols, rows);
         let row1_text: String = cells[1].iter().map(|c| c.c).collect::<String>();
-        assert!(row1_text.contains("Idle"), "Expected Idle, got: '{}'", row1_text.trim());
+        assert!(
+            row1_text.contains("Idle"),
+            "Expected Idle, got: '{}'",
+            row1_text.trim()
+        );
         assert_eq!(cells[1][0].fg, colors.state_idle);
 
         // Running
         panel.update_state(SessionState::Running);
         let cells = panel.to_terminal_cells(cols, rows);
         let row1_text: String = cells[1].iter().map(|c| c.c).collect::<String>();
-        assert!(row1_text.contains("Running"), "Expected Running, got: '{}'", row1_text.trim());
+        assert!(
+            row1_text.contains("Running"),
+            "Expected Running, got: '{}'",
+            row1_text.trim()
+        );
         assert_eq!(cells[1][0].fg, colors.state_running);
 
         // WaitingForInput
         panel.update_state(SessionState::WaitingForInput);
         let cells = panel.to_terminal_cells(cols, rows);
         let row1_text: String = cells[1].iter().map(|c| c.c).collect::<String>();
-        assert!(row1_text.contains("WaitingForInput"), "Expected WaitingForInput, got: '{}'", row1_text.trim());
+        assert!(
+            row1_text.contains("WaitingForInput"),
+            "Expected WaitingForInput, got: '{}'",
+            row1_text.trim()
+        );
         assert_eq!(cells[1][0].fg, colors.state_waiting);
 
         // Error
         panel.update_state(SessionState::Error);
         let cells = panel.to_terminal_cells(cols, rows);
         let row1_text: String = cells[1].iter().map(|c| c.c).collect::<String>();
-        assert!(row1_text.contains("Error"), "Expected Error, got: '{}'", row1_text.trim());
+        assert!(
+            row1_text.contains("Error"),
+            "Expected Error, got: '{}'",
+            row1_text.trim()
+        );
         assert_eq!(cells[1][0].fg, colors.state_error);
     }
 
@@ -1548,7 +1779,12 @@ mod tests {
     fn sample_entries() -> Vec<SessionListEntry> {
         vec![
             make_entry(1, "api-server", SessionState::Running, Layer::Pinned),
-            make_entry(2, "web-frontend", SessionState::WaitingForInput, Layer::Foreground),
+            make_entry(
+                2,
+                "web-frontend",
+                SessionState::WaitingForInput,
+                Layer::Foreground,
+            ),
             make_entry(3, "cli-tool", SessionState::Idle, Layer::Background),
         ]
     }
@@ -1657,33 +1893,65 @@ mod tests {
 
         // Row 1: "Pinned:" group header (pinned entries come first)
         let row1: String = cells[1].iter().map(|c| c.c).collect::<String>();
-        assert!(row1.contains("Pinned:"), "Expected Pinned group header, got: '{}'", row1.trim());
+        assert!(
+            row1.contains("Pinned:"),
+            "Expected Pinned group header, got: '{}'",
+            row1.trim()
+        );
 
         // Row 2: pinned entry "[1] api-server [Running]"
         let row2: String = cells[2].iter().map(|c| c.c).collect::<String>();
-        assert!(row2.contains("api-server"), "Expected api-server, got: '{}'", row2.trim());
-        assert!(row2.contains("Running"), "Expected Running state, got: '{}'", row2.trim());
-        assert!(row2.contains("*"), "Expected pin marker, got: '{}'", row2.trim());
+        assert!(
+            row2.contains("api-server"),
+            "Expected api-server, got: '{}'",
+            row2.trim()
+        );
+        assert!(
+            row2.contains("Running"),
+            "Expected Running state, got: '{}'",
+            row2.trim()
+        );
+        assert!(
+            row2.contains("*"),
+            "Expected pin marker, got: '{}'",
+            row2.trim()
+        );
         // Selected (index 0) should have highlighted bg
         assert_eq!(cells[2][0].bg, colors.session_selected_bg);
 
         // Row 3: "Foreground:" group header
         let row3: String = cells[3].iter().map(|c| c.c).collect::<String>();
-        assert!(row3.contains("Foreground:"), "Expected Foreground header, got: '{}'", row3.trim());
+        assert!(
+            row3.contains("Foreground:"),
+            "Expected Foreground header, got: '{}'",
+            row3.trim()
+        );
 
         // Row 4: foreground entry
         let row4: String = cells[4].iter().map(|c| c.c).collect::<String>();
-        assert!(row4.contains("web-frontend"), "Expected web-frontend, got: '{}'", row4.trim());
+        assert!(
+            row4.contains("web-frontend"),
+            "Expected web-frontend, got: '{}'",
+            row4.trim()
+        );
         // Not selected -> default bg
         assert_eq!(cells[4][0].bg, colors.background);
 
         // Row 5: "Background:" group header
         let row5: String = cells[5].iter().map(|c| c.c).collect::<String>();
-        assert!(row5.contains("Background:"), "Expected Background header, got: '{}'", row5.trim());
+        assert!(
+            row5.contains("Background:"),
+            "Expected Background header, got: '{}'",
+            row5.trim()
+        );
 
         // Row 6: background entry
         let row6: String = cells[6].iter().map(|c| c.c).collect::<String>();
-        assert!(row6.contains("cli-tool"), "Expected cli-tool, got: '{}'", row6.trim());
+        assert!(
+            row6.contains("cli-tool"),
+            "Expected cli-tool, got: '{}'",
+            row6.trim()
+        );
 
         // Total rows should equal requested
         assert_eq!(cells.len(), 20);
@@ -1736,7 +2004,12 @@ mod tests {
         list.selected_index = 2;
 
         // Update with fewer entries
-        list.update(vec![make_entry(1, "only", SessionState::Idle, Layer::Foreground)]);
+        list.update(vec![make_entry(
+            1,
+            "only",
+            SessionState::Idle,
+            Layer::Foreground,
+        )]);
         assert_eq!(list.selected_index, 0);
     }
 
@@ -1764,9 +2037,11 @@ mod tests {
     #[test]
     fn side_panel_new_session_at_top() {
         let mut panel = SidePanel::new();
-        panel.update_sessions(vec![
-            make_side_entry("project-a", SessionState::Running, true),
-        ]);
+        panel.update_sessions(vec![make_side_entry(
+            "project-a",
+            SessionState::Running,
+            true,
+        )]);
 
         let cells = panel.to_terminal_cells(20, 10, 1.0);
         let row0_text: String = cells[0].iter().map(|c| c.c).collect::<String>();
@@ -1800,10 +2075,18 @@ mod tests {
         let cells = panel.to_terminal_cells(20, 10, 1.0);
         // Row 2 should have the first session
         let row2_text: String = cells[2].iter().map(|c| c.c).collect::<String>();
-        assert!(row2_text.contains("alpha"), "Expected 'alpha', got: '{}'", row2_text.trim());
+        assert!(
+            row2_text.contains("alpha"),
+            "Expected 'alpha', got: '{}'",
+            row2_text.trim()
+        );
         // Row 3 should have the second session
         let row3_text: String = cells[3].iter().map(|c| c.c).collect::<String>();
-        assert!(row3_text.contains("beta"), "Expected 'beta', got: '{}'", row3_text.trim());
+        assert!(
+            row3_text.contains("beta"),
+            "Expected 'beta', got: '{}'",
+            row3_text.trim()
+        );
     }
 
     #[test]
@@ -1887,9 +2170,7 @@ mod tests {
     fn side_panel_selected_overrides_active_bg() {
         let colors = default_colors();
         let mut panel = SidePanel::new();
-        panel.update_sessions(vec![
-            make_side_entry("active", SessionState::Idle, true),
-        ]);
+        panel.update_sessions(vec![make_side_entry("active", SessionState::Idle, true)]);
         // Select the session (index 1)
         panel.selected_index = 1;
 

@@ -48,8 +48,11 @@ fn pty_to_terminal_ansi_color_output() {
     // 'g' should be green
     let g_cell = &content.rows[0][0];
     assert_eq!(g_cell.c, 'g');
-    // Green (index 2) = Rgb(0, 205, 0)
-    assert_eq!(g_cell.fg, surfterm::session::terminal::Rgb::new(0, 205, 0));
+    // Green (index 2) = Catppuccin Mocha #a6e3a1
+    assert_eq!(
+        g_cell.fg,
+        surfterm::session::terminal::Rgb::new(0xa6, 0xe3, 0xa1)
+    );
 }
 
 #[test]
@@ -673,10 +676,7 @@ name = "test"
 version = "1.0"
 "#;
     let result = load_patterns_from_toml(toml);
-    assert!(
-        result.is_err(),
-        "TOML without patterns array should fail"
-    );
+    assert!(result.is_err(), "TOML without patterns array should fail");
 }
 
 #[test]

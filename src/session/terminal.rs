@@ -46,7 +46,7 @@ impl Default for TerminalCell {
         Self {
             c: ' ',
             fg: Rgb::new(0xcd, 0xd6, 0xf4), // Catppuccin text
-            bg: Rgb::new(0x1e, 0x1e, 0x2e),  // Catppuccin base
+            bg: Rgb::new(0x1e, 0x1e, 0x2e), // Catppuccin base
             bold: false,
             italic: false,
             underline: false,
@@ -98,18 +98,18 @@ fn default_color_table() -> [Rgb; 256] {
     let mut table = [Rgb::new(0, 0, 0); 256];
 
     // Use Catppuccin Mocha ANSI palette (softer than classic xterm).
-    table[0] = Rgb::new(0x45, 0x47, 0x5a);  // Black
-    table[1] = Rgb::new(0xf3, 0x8b, 0xa8);  // Red
-    table[2] = Rgb::new(0xa6, 0xe3, 0xa1);  // Green
-    table[3] = Rgb::new(0xf9, 0xe2, 0xaf);  // Yellow
-    table[4] = Rgb::new(0x89, 0xb4, 0xfa);  // Blue
-    table[5] = Rgb::new(0xf5, 0xc2, 0xe7);  // Magenta
-    table[6] = Rgb::new(0x94, 0xe2, 0xd5);  // Cyan
-    table[7] = Rgb::new(0xba, 0xc2, 0xde);  // White
+    table[0] = Rgb::new(0x45, 0x47, 0x5a); // Black
+    table[1] = Rgb::new(0xf3, 0x8b, 0xa8); // Red
+    table[2] = Rgb::new(0xa6, 0xe3, 0xa1); // Green
+    table[3] = Rgb::new(0xf9, 0xe2, 0xaf); // Yellow
+    table[4] = Rgb::new(0x89, 0xb4, 0xfa); // Blue
+    table[5] = Rgb::new(0xf5, 0xc2, 0xe7); // Magenta
+    table[6] = Rgb::new(0x94, 0xe2, 0xd5); // Cyan
+    table[7] = Rgb::new(0xba, 0xc2, 0xde); // White
 
     // Bright ANSI colors (8-15).
-    table[8] = Rgb::new(0x58, 0x5b, 0x70);  // BrightBlack
-    table[9] = Rgb::new(0xf3, 0x8b, 0xa8);  // BrightRed
+    table[8] = Rgb::new(0x58, 0x5b, 0x70); // BrightBlack
+    table[9] = Rgb::new(0xf3, 0x8b, 0xa8); // BrightRed
     table[10] = Rgb::new(0xa6, 0xe3, 0xa1); // BrightGreen
     table[11] = Rgb::new(0xf9, 0xe2, 0xaf); // BrightYellow
     table[12] = Rgb::new(0x89, 0xb4, 0xfa); // BrightBlue
@@ -313,8 +313,8 @@ mod tests {
         let content = term.content();
         let cell = &content.rows[0][0];
         assert_eq!(cell.c, 'R');
-        // Named red (index 1) = Rgb(205, 0, 0).
-        assert_eq!(cell.fg, Rgb::new(205, 0, 0));
+        // Named red (index 1) = Catppuccin Mocha #f38ba8.
+        assert_eq!(cell.fg, Rgb::new(0xf3, 0x8b, 0xa8));
     }
 
     #[test]

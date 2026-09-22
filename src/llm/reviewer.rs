@@ -47,7 +47,10 @@ impl ReviewResult {
 
     /// Count issues by severity.
     pub fn count_by_severity(&self, severity: Severity) -> usize {
-        self.issues.iter().filter(|i| i.severity == severity).count()
+        self.issues
+            .iter()
+            .filter(|i| i.severity == severity)
+            .count()
     }
 }
 
@@ -98,7 +101,10 @@ impl CodeReviewer {
             language, code
         );
 
-        match self.runtime.infer(&prompt, Self::MAX_TOKENS, self.timeout_ms) {
+        match self
+            .runtime
+            .infer(&prompt, Self::MAX_TOKENS, self.timeout_ms)
+        {
             Ok(Some(response)) if !response.trim().is_empty() => {
                 Some(parse_review_response(&response))
             }
@@ -121,7 +127,10 @@ impl CodeReviewer {
             diff
         );
 
-        match self.runtime.infer(&prompt, Self::MAX_TOKENS, self.timeout_ms) {
+        match self
+            .runtime
+            .infer(&prompt, Self::MAX_TOKENS, self.timeout_ms)
+        {
             Ok(Some(response)) if !response.trim().is_empty() => {
                 Some(parse_review_response(&response))
             }

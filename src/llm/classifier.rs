@@ -47,7 +47,10 @@ impl LlmClassifier {
             text
         );
 
-        match self.runtime.infer(&prompt, Self::MAX_TOKENS, self.timeout_ms) {
+        match self
+            .runtime
+            .infer(&prompt, Self::MAX_TOKENS, self.timeout_ms)
+        {
             Ok(Some(response)) => parse_classification(&response),
             _ => None,
         }
@@ -164,10 +167,7 @@ mod tests {
 
     #[test]
     fn test_parse_classification_state() {
-        assert_eq!(
-            parse_classification("State"),
-            Some(Classification::State)
-        );
+        assert_eq!(parse_classification("State"), Some(Classification::State));
     }
 
     #[test]

@@ -65,7 +65,10 @@ impl GridLayout {
     }
 
     /// Create a new grid layout with an explicit scale factor for sidebar width calculation.
-    #[instrument(skip_all, fields(surface_width, surface_height, font_size, scale_factor))]
+    #[instrument(
+        skip_all,
+        fields(surface_width, surface_height, font_size, scale_factor)
+    )]
     pub fn with_scale_factor(
         surface_width: u32,
         surface_height: u32,

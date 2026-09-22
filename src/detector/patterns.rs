@@ -95,8 +95,7 @@ pub fn default_claude_code_state_patterns() -> Vec<StatePattern> {
 #[instrument(skip(content))]
 #[allow(dead_code)]
 pub fn load_patterns_from_toml(content: &str) -> Result<Vec<StatePattern>> {
-    let file: PatternsFile =
-        toml::from_str(content).context("failed to parse patterns TOML")?;
+    let file: PatternsFile = toml::from_str(content).context("failed to parse patterns TOML")?;
 
     let mut patterns = Vec::new();
     for entry in file.patterns {
@@ -155,8 +154,12 @@ mod tests {
             .filter(|p| p.target_state == SessionState::WaitingForInput)
             .collect();
         assert!(waiting.iter().any(|p| p.regex.is_match("> ")));
-        assert!(waiting.iter().any(|p| p.regex.is_match("Would you like to proceed?")));
-        assert!(waiting.iter().any(|p| p.regex.is_match("Do you want to continue?")));
+        assert!(waiting
+            .iter()
+            .any(|p| p.regex.is_match("Would you like to proceed?")));
+        assert!(waiting
+            .iter()
+            .any(|p| p.regex.is_match("Do you want to continue?")));
         assert!(waiting.iter().any(|p| p.regex.is_match("Proceed? Y/n")));
         assert!(waiting.iter().any(|p| p.regex.is_match("Continue? yes/no")));
 
@@ -166,9 +169,13 @@ mod tests {
             .filter(|p| p.target_state == SessionState::Running)
             .collect();
         assert!(running.iter().any(|p| p.regex.is_match("⏺ Read file")));
-        assert!(running.iter().any(|p| p.regex.is_match("Reading src/main.rs")));
+        assert!(running
+            .iter()
+            .any(|p| p.regex.is_match("Reading src/main.rs")));
         assert!(running.iter().any(|p| p.regex.is_match("Writing output")));
-        assert!(running.iter().any(|p| p.regex.is_match("Searching for pattern")));
+        assert!(running
+            .iter()
+            .any(|p| p.regex.is_match("Searching for pattern")));
         assert!(running.iter().any(|p| p.regex.is_match("Running command")));
 
         // Error patterns
@@ -176,8 +183,12 @@ mod tests {
             .iter()
             .filter(|p| p.target_state == SessionState::Error)
             .collect();
-        assert!(errors.iter().any(|p| p.regex.is_match("Error: something broke")));
-        assert!(errors.iter().any(|p| p.regex.is_match("error: compilation failed")));
+        assert!(errors
+            .iter()
+            .any(|p| p.regex.is_match("Error: something broke")));
+        assert!(errors
+            .iter()
+            .any(|p| p.regex.is_match("error: compilation failed")));
         assert!(errors.iter().any(|p| p.regex.is_match("FAILED to build")));
         assert!(errors.iter().any(|p| p.regex.is_match("thread panic")));
         assert!(errors.iter().any(|p| p.regex.is_match("Permission denied")));

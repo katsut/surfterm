@@ -16,19 +16,13 @@ pub struct SessionStatusData {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WsCommand {
     /// Send a text response to a session waiting for input.
-    Respond {
-        session_id: String,
-        payload: String,
-    },
+    Respond { session_id: String, payload: String },
     /// Switch the active (foreground) session.
     SwitchSession { session_id: String },
     /// Pin a session to the foreground layer.
     PinSession { session_id: String },
     /// Raw PTY input (base64-encoded bytes).
-    PtyInput {
-        session_id: String,
-        data: Vec<u8>,
-    },
+    PtyInput { session_id: String, data: Vec<u8> },
     /// Resize the terminal for a session.
     Resize {
         session_id: String,

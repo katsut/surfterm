@@ -59,7 +59,12 @@ impl PtyHandle {
     /// `session_id` and `socket_path` are set as environment variables so that
     /// external tools (e.g. Claude Code notification hooks) can signal Surfterm.
     #[instrument(skip_all, fields(rows, cols))]
-    pub fn spawn(rows: u16, cols: u16, session_id: &str, socket_path: &str) -> Result<Self, PtyError> {
+    pub fn spawn(
+        rows: u16,
+        cols: u16,
+        session_id: &str,
+        socket_path: &str,
+    ) -> Result<Self, PtyError> {
         let pty_system = native_pty_system();
 
         let size = PtySize {
@@ -69,9 +74,7 @@ impl PtyHandle {
             pixel_height: 0,
         };
 
-        let pair = pty_system
-            .openpty(size)
-            .map_err(PtyError::OpenPty)?;
+        let pair = pty_system.openpty(size).map_err(PtyError::OpenPty)?;
 
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
 
@@ -92,10 +95,7 @@ impl PtyHandle {
             cmd.env("LC_CTYPE", "UTF-8");
         }
 
-        let mut child = pair
-            .slave
-            .spawn_command(cmd)
-            .map_err(PtyError::Spawn)?;
+        let mut child = pair.slave.spawn_command(cmd).map_err(PtyError::Spawn)?;
 
         let child_pid = child.process_id();
 
@@ -107,10 +107,7 @@ impl PtyHandle {
             .try_clone_reader()
             .map_err(PtyError::ReaderError)?;
 
-        let writer = pair
-            .master
-            .take_writer()
-            .map_err(PtyError::WriterError)?;
+        let writer = pair.master.take_writer().map_err(PtyError::WriterError)?;
 
         let (output_tx, output_rx) = mpsc::channel::<Vec<u8>>(256);
         let child_exited = Arc::new(Notify::new());
@@ -226,6 +223,50 @@ impl PtyHandle {
     }
 }
 
+/// Get the current working directory of a process by PID (macOS only).
+#[cfg(target_os = "macos")]
+pub fn child_cwd(pid: i32) -> Option<std::path::PathBuf> {
+    use std::ffi::CStr;
+    use std::os::raw::c_char;
+    use std::path::PathBuf;
+
+    extern "C" {
+        fn proc_pidinfo(pid: i32, flavor: i32, arg: u64, buffer: *mut u8, buffersize: i32) -> i32;
+    }
+
+    // PROC_PIDVNODEPATHINFO = 9
+    const PROC_PIDVNODEPATHINFO: i32 = 9;
+    // struct vnode_info_path has a fixed layout; the cwd path starts at offset 152
+    // Total struct size is 2352 bytes
+    const VNODE_INFO_PATH_SIZE: usize = 2352;
+    const CWD_PATH_OFFSET: usize = 152;
+
+    let mut buf = vec![0u8; VNODE_INFO_PATH_SIZE];
+    let ret = unsafe {
+        proc_pidinfo(
+            pid,
+            PROC_PIDVNODEPATHINFO,
+            0,
+            buf.as_mut_ptr(),
+            VNODE_INFO_PATH_SIZE as i32,
+        )
+    };
+
+    if ret <= 0 {
+        return None;
+    }
+
+    let cwd_bytes = &buf[CWD_PATH_OFFSET..];
+    let cwd_cstr = unsafe { CStr::from_ptr(cwd_bytes.as_ptr() as *const c_char) };
+    let path = PathBuf::from(cwd_cstr.to_string_lossy().to_string());
+
+    if path.as_os_str().is_empty() {
+        None
+    } else {
+        Some(path)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,7 +320,8 @@ mod tests {
     async fn pty_handle_spawn_and_exit() {
         std::env::set_var("SHELL", "/bin/sh");
 
-        let mut handle = PtyHandle::spawn(24, 80, "test-session", "/tmp/surfterm-test.sock").expect("spawn pty handle");
+        let mut handle = PtyHandle::spawn(24, 80, "test-session", "/tmp/surfterm-test.sock")
+            .expect("spawn pty handle");
 
         // Send 'exit' to make the shell terminate.
         handle
@@ -290,74 +332,20 @@ mod tests {
         // Drain output until the stream ends — this confirms the child exited
         // because the reader task only returns None after EOF.
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
-        while let Ok(Some(_)) =
-            tokio::time::timeout_at(deadline, handle.read_output()).await
-        {}
+        while let Ok(Some(_)) = tokio::time::timeout_at(deadline, handle.read_output()).await {}
     }
 
     #[tokio::test]
     async fn pty_handle_resize() {
         std::env::set_var("SHELL", "/bin/sh");
-        let mut handle = PtyHandle::spawn(24, 80, "test-session", "/tmp/surfterm-test.sock").expect("spawn pty handle");
+        let mut handle = PtyHandle::spawn(24, 80, "test-session", "/tmp/surfterm-test.sock")
+            .expect("spawn pty handle");
 
         // Resize should succeed.
         handle.resize(48, 120).await.expect("resize pty");
 
         // Clean up.
-        handle
-            .write_input(b"exit\n")
-            .await
-            .expect("write exit");
+        handle.write_input(b"exit\n").await.expect("write exit");
         while handle.read_output().await.is_some() {}
-    }
-}
-
-/// Get the current working directory of a process by PID (macOS only).
-#[cfg(target_os = "macos")]
-pub fn child_cwd(pid: i32) -> Option<std::path::PathBuf> {
-    use std::ffi::CStr;
-    use std::os::raw::c_char;
-    use std::path::PathBuf;
-
-    extern "C" {
-        fn proc_pidinfo(
-            pid: i32,
-            flavor: i32,
-            arg: u64,
-            buffer: *mut u8,
-            buffersize: i32,
-        ) -> i32;
-    }
-
-    // PROC_PIDVNODEPATHINFO = 9
-    const PROC_PIDVNODEPATHINFO: i32 = 9;
-    // struct vnode_info_path has a fixed layout; the cwd path starts at offset 152
-    // Total struct size is 2352 bytes
-    const VNODE_INFO_PATH_SIZE: usize = 2352;
-    const CWD_PATH_OFFSET: usize = 152;
-
-    let mut buf = vec![0u8; VNODE_INFO_PATH_SIZE];
-    let ret = unsafe {
-        proc_pidinfo(
-            pid,
-            PROC_PIDVNODEPATHINFO,
-            0,
-            buf.as_mut_ptr(),
-            VNODE_INFO_PATH_SIZE as i32,
-        )
-    };
-
-    if ret <= 0 {
-        return None;
-    }
-
-    let cwd_bytes = &buf[CWD_PATH_OFFSET..];
-    let cwd_cstr = unsafe { CStr::from_ptr(cwd_bytes.as_ptr() as *const c_char) };
-    let path = PathBuf::from(cwd_cstr.to_string_lossy().to_string());
-
-    if path.as_os_str().is_empty() {
-        None
-    } else {
-        Some(path)
     }
 }

@@ -3,7 +3,6 @@ use tracing::info;
 
 mod app;
 mod config;
-mod ws;
 mod detector;
 mod input;
 mod layer;
@@ -13,6 +12,7 @@ mod preview;
 mod renderer;
 mod session;
 mod shell;
+mod ws;
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()

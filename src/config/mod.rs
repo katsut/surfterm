@@ -64,10 +64,9 @@ impl ConfigEngine {
     /// Load configuration from a specific directory.
     #[instrument(skip_all, fields(dir = %config_dir.display()))]
     pub fn load(config_dir: &Path) -> Self {
-        let config = Self::load_config_file(&config_dir.join("config.toml"))
-            .unwrap_or_default();
-        let keybinds = Self::load_keybinds_file(&config_dir.join("keybinds.toml"))
-            .unwrap_or_default();
+        let config = Self::load_config_file(&config_dir.join("config.toml")).unwrap_or_default();
+        let keybinds =
+            Self::load_keybinds_file(&config_dir.join("keybinds.toml")).unwrap_or_default();
 
         Self {
             config,
@@ -291,11 +290,19 @@ close_session = "Ctrl+w"
         let engine = ConfigEngine::load(&dir);
         assert_eq!(engine.keybinds().prefix_key.as_deref(), Some("Ctrl+a"));
         assert_eq!(
-            engine.keybinds().overrides.get("new_session").map(|s| s.as_str()),
+            engine
+                .keybinds()
+                .overrides
+                .get("new_session")
+                .map(|s| s.as_str()),
             Some("Ctrl+n")
         );
         assert_eq!(
-            engine.keybinds().overrides.get("close_session").map(|s| s.as_str()),
+            engine
+                .keybinds()
+                .overrides
+                .get("close_session")
+                .map(|s| s.as_str()),
             Some("Ctrl+w")
         );
     }
@@ -377,7 +384,8 @@ state = "Running"
 
     /// Helper to create a unique temporary directory for each test.
     fn tempdir(suffix: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("surfterm_test_{suffix}_{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("surfterm_test_{suffix}_{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir

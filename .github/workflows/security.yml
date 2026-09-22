@@ -8,23 +8,40 @@ on:
     paths:
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'deny.toml'
+      - '.github/workflows/security.yml'
   pull_request:
     paths:
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'deny.toml'
+      - '.github/workflows/security.yml'
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
+  # .cargo/config.toml sets rustc-wrapper = "sccache" for local development.
+  # sccache is not in the cargo-deny action's container, so `cargo metadata`
+  # would fail. An empty value disables the wrapper.
+  RUSTC_WRAPPER: ""
 
 jobs:
   audit:
     name: Dependency Audit
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      issues: write
     steps:
       - uses: actions/checkout@v4
       - uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          # See deny.toml for why these two are accepted.
+          ignore: RUSTSEC-2026-0194,RUSTSEC-2026-0195
 
   deny:
     name: License & Supply Chain Check

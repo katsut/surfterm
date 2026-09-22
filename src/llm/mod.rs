@@ -123,12 +123,7 @@ impl LlmRuntime {
 
     /// Run inference. Returns `Ok(None)` when no backend is present.
     #[instrument(skip(self, prompt))]
-    pub fn infer(
-        &self,
-        prompt: &str,
-        max_tokens: u32,
-        timeout_ms: u64,
-    ) -> Result<Option<String>> {
+    pub fn infer(&self, prompt: &str, max_tokens: u32, timeout_ms: u64) -> Result<Option<String>> {
         match &self.backend {
             Some(backend) => {
                 let result = backend.infer(prompt, max_tokens, timeout_ms)?;

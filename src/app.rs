@@ -14,9 +14,6 @@ use winit::{
     window::{CursorIcon, Window, WindowId},
 };
 
-use crate::ws::{SessionStatusData, WsCommand, WsEvent, WsOutMessage};
-use crate::ws::bonjour::BonjourHandle;
-use crate::ws::server::WsServerHandle;
 use crate::config::theme::ThemeManager;
 use crate::detector::patterns::default_claude_code_state_patterns;
 use crate::detector::StateDetector;
@@ -24,11 +21,14 @@ use crate::input::{InputAction, InputHandler, InputMode, SurftermCmd};
 use crate::menu::{AppMenu, MenuAction};
 use crate::renderer::panel::{CardInfo, SidePanelEntry};
 use crate::renderer::Renderer;
-use crate::session::state::SessionState;
 use crate::session::pty::PtyHandle;
+use crate::session::state::SessionState;
 use crate::session::stream_splitter::StreamSplitter;
 use crate::session::terminal::Terminal;
 use crate::session::SessionId;
+use crate::ws::bonjour::BonjourHandle;
+use crate::ws::server::WsServerHandle;
+use crate::ws::{SessionStatusData, WsCommand, WsEvent, WsOutMessage};
 
 /// Application event types for inter-component communication.
 #[derive(Debug)]
@@ -157,7 +157,8 @@ impl App {
         let (detector, _state_rx) = StateDetector::new(state_patterns);
 
         // Spawn PTY with session ID and socket path for external notification hooks
-        let mut pty = match PtyHandle::spawn(rows, cols, &session_id.to_string(), &self.socket_path) {
+        let mut pty = match PtyHandle::spawn(rows, cols, &session_id.to_string(), &self.socket_path)
+        {
             Ok(p) => p,
             Err(e) => {
                 tracing::error!("Failed to spawn PTY: {e}");
@@ -412,27 +413,27 @@ impl App {
         use notify::{Event, EventKind, RecursiveMode, Watcher};
 
         let proxy = self.event_proxy.clone();
-        let mut watcher = match notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
-            if let Ok(event) = res {
-                if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
-                    // Only react to theme.toml changes
-                    let is_theme = event.paths.iter().any(|p| {
-                        p.file_name()
-                            .map(|n| n == "theme.toml")
-                            .unwrap_or(false)
-                    });
-                    if is_theme {
-                        let _ = proxy.send_event(AppEvent::ThemeChanged);
+        let mut watcher =
+            match notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
+                if let Ok(event) = res {
+                    if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
+                        // Only react to theme.toml changes
+                        let is_theme = event
+                            .paths
+                            .iter()
+                            .any(|p| p.file_name().map(|n| n == "theme.toml").unwrap_or(false));
+                        if is_theme {
+                            let _ = proxy.send_event(AppEvent::ThemeChanged);
+                        }
                     }
                 }
-            }
-        }) {
-            Ok(w) => w,
-            Err(e) => {
-                tracing::warn!("Failed to create theme file watcher: {e}");
-                return;
-            }
-        };
+            }) {
+                Ok(w) => w,
+                Err(e) => {
+                    tracing::warn!("Failed to create theme file watcher: {e}");
+                    return;
+                }
+            };
 
         // Watch global theme
         let theme_path = config_dir.join("theme.toml");
@@ -520,7 +521,14 @@ impl App {
             self.handle_sidebar_click(y, cell_height);
         } else if x < main_rect.width {
             // Click is in the main area.
-            self.handle_main_area_click(y, cell_height, cell_width, main_cols, main_rows, scale_factor);
+            self.handle_main_area_click(
+                y,
+                cell_height,
+                cell_width,
+                main_cols,
+                main_rows,
+                scale_factor,
+            );
         }
 
         if let Some(window) = self.window.as_ref() {
@@ -721,7 +729,10 @@ impl App {
         let listener = match std::os::unix::net::UnixListener::bind(&path) {
             Ok(l) => l,
             Err(e) => {
-                tracing::warn!("Failed to create notification socket at {}: {e}", path.display());
+                tracing::warn!(
+                    "Failed to create notification socket at {}: {e}",
+                    path.display()
+                );
                 return;
             }
         };
@@ -739,7 +750,8 @@ impl App {
                         if stream.read_to_string(&mut buf).is_ok() {
                             let session_id = buf.trim().to_string();
                             if !session_id.is_empty() {
-                                let _ = proxy.send_event(AppEvent::NotificationReceived(session_id));
+                                let _ =
+                                    proxy.send_event(AppEvent::NotificationReceived(session_id));
                             }
                         }
                     }
@@ -753,10 +765,7 @@ impl App {
     }
 
     /// Start the WebSocket server and Bonjour advertisement.
-    fn start_ws_server(
-        proxy: EventLoopProxy<AppEvent>,
-        tokio_handle: &tokio::runtime::Handle,
-    ) {
+    fn start_ws_server(proxy: EventLoopProxy<AppEvent>, tokio_handle: &tokio::runtime::Handle) {
         let proxy_cmd = proxy.clone();
         let proxy_ready = proxy;
 
@@ -840,7 +849,10 @@ impl ApplicationHandler<AppEvent> for App {
             }
         };
 
-        let mut renderer = match self.tokio_handle.block_on(Renderer::new(Arc::clone(&window))) {
+        let mut renderer = match self
+            .tokio_handle
+            .block_on(Renderer::new(Arc::clone(&window)))
+        {
             Ok(r) => r,
             Err(e) => {
                 tracing::error!("Failed to initialize renderer: {e}");
@@ -852,7 +864,9 @@ impl ApplicationHandler<AppEvent> for App {
         // Load theme: global config + local override from cwd
         let config_dir = {
             if let Some(home) = std::env::var_os("HOME") {
-                std::path::PathBuf::from(home).join(".config").join("surfterm")
+                std::path::PathBuf::from(home)
+                    .join(".config")
+                    .join("surfterm")
             } else {
                 std::path::PathBuf::from(".config/surfterm")
             }
@@ -941,10 +955,14 @@ impl ApplicationHandler<AppEvent> for App {
                                         * renderer.grid.cell_height;
                                 // Position IME candidate window right below the text
                                 // Use font_size instead of cell_height to avoid line_height gap
-                                let ime_y = cursor_y as i32 + renderer.text_renderer.font_size as i32;
+                                let ime_y =
+                                    cursor_y as i32 + renderer.text_renderer.font_size as i32;
                                 window.set_ime_cursor_area(
                                     PhysicalPosition::new(cursor_x as i32, ime_y),
-                                    winit::dpi::PhysicalSize::new(renderer.grid.cell_width as u32, renderer.text_renderer.font_size as u32),
+                                    winit::dpi::PhysicalSize::new(
+                                        renderer.grid.cell_width as u32,
+                                        renderer.text_renderer.font_size as u32,
+                                    ),
                                 );
                             }
 
@@ -964,22 +982,20 @@ impl ApplicationHandler<AppEvent> for App {
                     window.request_redraw();
                 }
             }
-            WindowEvent::Ime(ime) => {
-                if let Ime::Commit(text) = ime {
-                    if let Some(active_id) = self.active_session {
-                        if let Some(pipeline) = self.sessions.get(&active_id) {
-                            let writer = Arc::clone(&pipeline.writer);
-                            let bytes = text.into_bytes();
-                            self.tokio_handle.spawn(async move {
-                                let mut w = writer.lock().await;
-                                let _ = w.write_all(&bytes);
-                                let _ = w.flush();
-                            });
-                        }
+            WindowEvent::Ime(Ime::Commit(text)) => {
+                if let Some(active_id) = self.active_session {
+                    if let Some(pipeline) = self.sessions.get(&active_id) {
+                        let writer = Arc::clone(&pipeline.writer);
+                        let bytes = text.into_bytes();
+                        self.tokio_handle.spawn(async move {
+                            let mut w = writer.lock().await;
+                            let _ = w.write_all(&bytes);
+                            let _ = w.flush();
+                        });
                     }
-                    self.cursor_visible = true;
-                    self.cursor_blink_at = std::time::Instant::now();
                 }
+                self.cursor_visible = true;
+                self.cursor_blink_at = std::time::Instant::now();
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 // Handle Cmd+=/- for font size zoom before InputHandler
@@ -1022,7 +1038,10 @@ impl ApplicationHandler<AppEvent> for App {
                                 return;
                             }
                             // Cmd+1-9: switch to session by index in session_order
-                            n if n.len() == 1 && n.as_bytes()[0] >= b'1' && n.as_bytes()[0] <= b'9' => {
+                            n if n.len() == 1
+                                && n.as_bytes()[0] >= b'1'
+                                && n.as_bytes()[0] <= b'9' =>
+                            {
                                 let idx = (n.as_bytes()[0] - b'1') as usize;
                                 if idx < self.session_order.len() {
                                     let target = self.session_order[idx];
@@ -1356,7 +1375,10 @@ impl ApplicationHandler<AppEvent> for App {
                             }
                         }
                     }
-                    WsCommand::Respond { session_id, payload } => {
+                    WsCommand::Respond {
+                        session_id,
+                        payload,
+                    } => {
                         if let Ok(target_id) = session_id.parse::<uuid::Uuid>() {
                             let target = SessionId::from(target_id);
                             if let Some(pipeline) = self.sessions.get(&target) {
@@ -1384,7 +1406,11 @@ impl ApplicationHandler<AppEvent> for App {
                             }
                         }
                     }
-                    WsCommand::Resize { session_id, cols, rows } => {
+                    WsCommand::Resize {
+                        session_id,
+                        cols,
+                        rows,
+                    } => {
                         if let Ok(target_id) = session_id.parse::<uuid::Uuid>() {
                             let target = SessionId::from(target_id);
                             if let Some(pipeline) = self.sessions.get(&target) {
@@ -1505,6 +1531,59 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
+/// Update session name from child process cwd (throttled to once per second).
+fn update_session_name_from_cwd(pipeline: &mut SessionPipeline) {
+    // Throttle: only check once per second
+    if pipeline.last_cwd_check.elapsed() < std::time::Duration::from_secs(1) {
+        return;
+    }
+    pipeline.last_cwd_check = std::time::Instant::now();
+
+    #[cfg(target_os = "macos")]
+    if let Some(pid) = pipeline.child_pid {
+        if let Some(cwd) = crate::session::pty::child_cwd(pid as i32) {
+            if let Some(dir_name) = cwd.file_name().map(|n| n.to_string_lossy().to_string()) {
+                // Extract base name (without " (N)" suffix) for comparison
+                let current_base = pipeline
+                    .project_name
+                    .rfind(" (")
+                    .map(|i| &pipeline.project_name[..i])
+                    .unwrap_or(&pipeline.project_name);
+                // Only update if the directory actually changed
+                if current_base != dir_name {
+                    pipeline.project_name = dir_name;
+                }
+            }
+        }
+    }
+}
+
+/// Extract the working directory path from an OSC 7 escape sequence.
+///
+/// Format: `ESC ] 7 ; file://hostname/path ST`
+/// where ST is `ESC \` or `BEL (\x07)`.
+#[allow(dead_code)]
+fn extract_osc7_cwd(text: &str) -> Option<String> {
+    // Look for OSC 7 pattern: \x1b]7;file://...path... followed by \x1b\\ or \x07
+    let marker = "\x1b]7;";
+    let start = text.find(marker)?;
+    let rest = &text[start + marker.len()..];
+
+    // Find the string terminator (ESC \ or BEL)
+    let end = rest.find("\x1b\\").or_else(|| rest.find('\x07'))?;
+    let url = &rest[..end];
+
+    // Parse file:// URL to extract path
+    if let Some(path_start) = url.strip_prefix("file://") {
+        // Skip hostname (everything up to the next '/')
+        if let Some(slash_pos) = path_start.find('/') {
+            return Some(path_start[slash_pos..].to_string());
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     /// Test sidebar click row calculation logic.
@@ -1583,58 +1662,4 @@ mod tests {
         );
         assert_eq!(super::extract_osc7_cwd("normal output"), None);
     }
-}
-
-/// Update session name from child process cwd (throttled to once per second).
-fn update_session_name_from_cwd(pipeline: &mut SessionPipeline) {
-    // Throttle: only check once per second
-    if pipeline.last_cwd_check.elapsed() < std::time::Duration::from_secs(1) {
-        return;
-    }
-    pipeline.last_cwd_check = std::time::Instant::now();
-
-    #[cfg(target_os = "macos")]
-    if let Some(pid) = pipeline.child_pid {
-        if let Some(cwd) = crate::session::pty::child_cwd(pid as i32) {
-            if let Some(dir_name) = cwd.file_name().map(|n| n.to_string_lossy().to_string()) {
-                // Extract base name (without " (N)" suffix) for comparison
-                let current_base = pipeline.project_name
-                    .rfind(" (")
-                    .map(|i| &pipeline.project_name[..i])
-                    .unwrap_or(&pipeline.project_name);
-                // Only update if the directory actually changed
-                if current_base != dir_name {
-                    pipeline.project_name = dir_name;
-                }
-            }
-        }
-    }
-}
-
-/// Extract the working directory path from an OSC 7 escape sequence.
-///
-/// Format: `ESC ] 7 ; file://hostname/path ST`
-/// where ST is `ESC \` or `BEL (\x07)`.
-#[allow(dead_code)]
-fn extract_osc7_cwd(text: &str) -> Option<String> {
-    // Look for OSC 7 pattern: \x1b]7;file://...path... followed by \x1b\\ or \x07
-    let marker = "\x1b]7;";
-    let start = text.find(marker)?;
-    let rest = &text[start + marker.len()..];
-
-    // Find the string terminator (ESC \ or BEL)
-    let end = rest
-        .find("\x1b\\")
-        .or_else(|| rest.find('\x07'))?;
-    let url = &rest[..end];
-
-    // Parse file:// URL to extract path
-    if let Some(path_start) = url.strip_prefix("file://") {
-        // Skip hostname (everything up to the next '/')
-        if let Some(slash_pos) = path_start.find('/') {
-            return Some(path_start[slash_pos..].to_string());
-        }
-    }
-
-    None
 }
